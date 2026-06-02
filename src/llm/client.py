@@ -13,10 +13,19 @@ class LLMResponse(BaseModel):
     completion_tokens : int = 0
     total_tokens : int = 0
     finish_reason: str = "stop"
+    tool_name : str | None = None
+    tool_args: dict | None = None
+
 
 class BaseLLMClient(abc.ABC):
     @abc.abstractmethod
-    async def send_message(self,message:str) -> LLMResponse:
+    async def send_message(
+        self,
+        message: str,
+        system_prompt: str = "",
+        tools: list | None = None,
+        conversation_history: list | None = None
+    ) -> LLMResponse:
         pass
 
     @abc.abstractmethod
