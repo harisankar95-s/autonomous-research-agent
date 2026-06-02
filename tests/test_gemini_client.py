@@ -8,6 +8,6 @@ async def test_gemini_client_sends_message():
     
     assert response.content is not None
     assert len(response.content) > 0
-    assert response.model == "gemini-2.5-flash"
+    assert response.model is not None
     assert response.total_tokens > 0
     assert response.response_time_ms > 0

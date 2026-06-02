@@ -11,7 +11,7 @@ class ReactAgent:
         self.system_prompt = system_prompt
         self.max_iterations = 10
         self.conversation_history = []
-    
+        
     async def run(self, query: str) -> str:
         logger.info(f"Start ReAct loop | query={query}")
         
@@ -34,7 +34,7 @@ class ReactAgent:
                 
                 self.conversation_history.append({
                     "role": "model",
-                    "parts": [{"functionCall": {"name": response.tool_name, "args": response.tool_args}}]
+                    "parts": response.raw_parts
                 })
                 self.conversation_history.append({
                     "role": "user",

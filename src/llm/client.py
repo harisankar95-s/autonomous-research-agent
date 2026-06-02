@@ -15,6 +15,7 @@ class LLMResponse(BaseModel):
     finish_reason: str = "stop"
     tool_name : str | None = None
     tool_args: dict | None = None
+    raw_parts: list | None = None
 
 
 class BaseLLMClient(abc.ABC):

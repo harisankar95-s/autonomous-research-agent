@@ -135,5 +135,6 @@ class GeminiClient(BaseLLMClient):
             total_tokens=usage.get("totalTokenCount", 0),
             finish_reason=finish_reason,
             tool_name=tool_name,
-            tool_args=tool_args
+            tool_args=tool_args,
+            raw_parts=candidate["content"]["parts"]
         )
