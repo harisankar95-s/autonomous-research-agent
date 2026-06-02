@@ -1,5 +1,5 @@
 import pytest
-from src.agent.gemini_client import GeminiClient
+from src.llm.gemini_client import GeminiClient
 
 @pytest.mark.asyncio
 async def test_gemini_client_sends_message():
