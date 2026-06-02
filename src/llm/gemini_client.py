@@ -3,7 +3,7 @@ import asyncio
 import random
 import httpx
 
-from src.agent.client import BaseLLMClient, LLMResponse
+from src.llm.client import BaseLLMClient, LLMResponse
 from src.utils.config import config
 from src.utils.logger import get_logger
 
