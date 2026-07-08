@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     gemini_model: str
     gemini_url: str
     tavily_api_key: str
+    database_url: str
 
 
 @lru_cache
