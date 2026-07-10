@@ -40,3 +40,4 @@ jobs:
           GEMINI_URL: ${{ secrets.GEMINI_URL }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
+          GEMINI_EMBEDDING_MODEL: ${{ secrets.GEMINI_EMBEDDING_MODEL }}
