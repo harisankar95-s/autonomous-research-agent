@@ -33,5 +33,9 @@ class BaseLLMClient(abc.ABC):
     def get_model_name(self) -> str:
         pass
 
-
+class BaseEmbeddingClient(abc.ABC):
+    
+    @abc.abstractmethod
+    async def generate_embedding(self, text: str) -> list[float]:
+        pass
 

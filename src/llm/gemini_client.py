@@ -138,3 +138,4 @@ class GeminiClient(BaseLLMClient):
             tool_args=tool_args,
             raw_parts=candidate["content"]["parts"]
         )
+    
