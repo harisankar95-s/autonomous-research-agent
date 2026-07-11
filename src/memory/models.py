@@ -14,5 +14,6 @@ class Session(Base):
     model: Mapped[str] = mapped_column()
     total_tokens: Mapped[int] = mapped_column()
     embedding: Mapped[list[float]] = mapped_column(Vector(3072))
+    embedding_model: Mapped[str] = mapped_column()
     confidence_score: Mapped[float] = mapped_column(default=0.5)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
