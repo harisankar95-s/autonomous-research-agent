@@ -9,8 +9,7 @@ class Session(Base):
     __tablename__ = "sessions"
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[str] = mapped_column(unique=True)
-    query: Mapped[str] = mapped_column()
-    answer: Mapped[str] = mapped_column()
+    summary: Mapped[str] = mapped_column()
     model: Mapped[str] = mapped_column()
     total_tokens: Mapped[int] = mapped_column()
     embedding: Mapped[list[float]] = mapped_column(Vector(3072))
