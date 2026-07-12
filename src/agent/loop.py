@@ -12,16 +12,25 @@ class ReactAgent:
         self.max_iterations = 10
         self.conversation_history = []
         
-    async def run(self, query: str) -> str:
+    async def run(self, query: str, context: list[str] | None = None) -> str:
         logger.info(f"Start ReAct loop | query={query}")
         
-        self.conversation_history = [{"role": "user", "parts": [{"text": query}]}]
+        if context is None:
+            context = []
+        
+        if context:
+            memory_text = "\n".join(f"- {item}" for item in context)
+            full_system_prompt = f"{self.system_prompt}\n\nRelevant memory:\n{memory_text}"
+        else:
+            full_system_prompt = self.system_prompt
+        
+        self.conversation_history.append({"role": "user", "parts": [{"text": query}]})
         
         for iteration in range(self.max_iterations):
             logger.info(f"Iteration {iteration + 1}/{self.max_iterations}")
             response = await self.llm_client.send_message(
                 message="",
-                system_prompt=self.system_prompt,
+                system_prompt=full_system_prompt,
                 tools=self.tool_registry.get_all_schemas(),
                 conversation_history=self.conversation_history
             )
@@ -43,6 +52,10 @@ class ReactAgent:
                 
             elif response.finish_reason == "STOP":
                 logger.info(f"Agent finished | iterations={iteration + 1}")
+                self.conversation_history.append({
+                    "role": "model",
+                    "parts": response.raw_parts
+                })
                 return response.content
         
         return "Max iterations reached without a final answer"
