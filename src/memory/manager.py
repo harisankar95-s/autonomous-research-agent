@@ -30,6 +30,10 @@ class MemoryManager:
         )
         return response.content
     
+    # NOTE: total_tokens is currently passed in as a placeholder (chat.py sends 0),
+    # since ReactAgent.run() only returns the final answer string, not the LLMResponse
+    # object with actual token usage. Real tracking requires ReactAgent to accumulate
+    # and return token counts across its iterations.
     async def save_session(self, summary: str, model: str, total_tokens: int) -> None:
         session_id = str(uuid.uuid4())
         embedding = await self.embedding_client.generate_embedding(summary)
