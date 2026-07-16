@@ -8,6 +8,7 @@ from src.utils.config import config
 from src.memory.manager import MemoryManager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from src.tools.code_execution import execute_python_code_tool
 
 
 
@@ -15,9 +16,15 @@ async def main():
     llm = GeminiClient()
     registry = ToolRegistry()
     registry.register(web_search_tool)
-    system_prompt = "You are a helpful research assistant. Use the web_search " \
-    "tool when you need current information, real-time data, or facts " \
-    "you're not certain about. Always answer clearly and cite what you found when relevant."
+    registry.register(execute_python_code_tool)
+    system_prompt = (
+        "You are a helpful research assistant. Use the web_search tool when you "
+        "need current information, real-time data, or facts you're not certain "
+        "about. Use the execute_python_code tool when you need to perform exact "
+        "calculations, statistical analysis, or data processing — never do "
+        "arithmetic or data analysis in your head when you could run real code "
+        "instead. Always answer clearly and cite what you found when relevant."
+    )
     agent = ReactAgent(
     llm_client=llm,
     tool_registry=registry,

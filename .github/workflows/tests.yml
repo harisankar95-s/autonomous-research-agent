@@ -32,6 +32,8 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Build code execution sandbox image
+        run: docker build -t python-code-sandbox sandbox/
       - name: Enable pgvector extension
         run: psql $DATABASE_URL -c "CREATE EXTENSION IF NOT EXISTS vector;"
         env:
