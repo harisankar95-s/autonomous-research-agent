@@ -220,3 +220,5 @@ __marimo__/
 # Project specific
 chroma_db/
 *.db
+data/
+.DS_Store
