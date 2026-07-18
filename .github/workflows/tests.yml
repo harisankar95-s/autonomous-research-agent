@@ -38,6 +38,10 @@ jobs:
         run: psql $DATABASE_URL -c "CREATE EXTENSION IF NOT EXISTS vector;"
         env:
           DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
+      - name: Create dataset_reader role
+        run: psql $DATABASE_URL -c "CREATE ROLE dataset_reader WITH LOGIN PASSWORD 'change_this_password';" || true
+        env:
+          DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
       - name: Run migrations
         run: alembic upgrade head
         env:
@@ -51,3 +55,4 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
           GEMINI_EMBEDDING_MODEL: ${{ secrets.GEMINI_EMBEDDING_MODEL }}
+          DATASET_READER_URL: ${{ secrets.CI_DATASET_READER_URL }}
