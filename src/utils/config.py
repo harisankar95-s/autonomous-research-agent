@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     tavily_api_key: str
     database_url: str
     gemini_embedding_model: str
+    dataset_reader_url: str
 
 
 @lru_cache

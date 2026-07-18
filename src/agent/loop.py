@@ -1,3 +1,5 @@
+import inspect
+
 from src.llm.client import BaseLLMClient, LLMResponse
 from src.tools.base import ToolRegistry
 from src.utils.logger import get_logger
@@ -9,7 +11,7 @@ class ReactAgent:
         self.llm_client = llm_client
         self.tool_registry = tool_registry
         self.system_prompt = system_prompt
-        self.max_iterations = 10
+        self.max_iterations = 25
         self.conversation_history = []
         
     async def run(self, query: str, context: list[str] | None = None) -> str:
@@ -38,7 +40,10 @@ class ReactAgent:
             if response.tool_name:
                 logger.info(f"Tool call | tool={response.tool_name} | args={response.tool_args}")
                 tool = self.tool_registry.get_tool(response.tool_name)
-                tool_result = tool.func(**response.tool_args)
+                if inspect.iscoroutinefunction(tool.func):
+                    tool_result = await tool.func(**response.tool_args)
+                else:
+                    tool_result = tool.func(**response.tool_args)
                 logger.info(f"Tool result received | tool={response.tool_name}")
                 
                 self.conversation_history.append({
