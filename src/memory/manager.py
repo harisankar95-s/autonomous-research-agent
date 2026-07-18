@@ -1,6 +1,6 @@
 from src.llm.client import BaseLLMClient, BaseEmbeddingClient
 from sqlalchemy.orm import Session as DBSession
-from src.memory.models import Session
+from src.memory.models import Session,DatasetFacts,Observation
 from src.utils.logger import get_logger
 import uuid
 
@@ -64,3 +64,62 @@ class MemoryManager:
         
         logger.info(f"Retrieved {len(results)} relevant sessions")
         return [session.summary for session in results]
+
+class FactStore:
+    def __init__(self, db_session: DBSession):
+        self.db_session = db_session
+
+    def save_facts(self, dataset_id: str, inferred_task_type: str, candidate_targets: list) -> None:
+
+        new_fact = DatasetFacts(
+            dataset_id = dataset_id,
+            inferred_task_type = inferred_task_type,
+            candidate_targets = candidate_targets
+        )
+        self.db_session.add(new_fact)
+        self.db_session.commit()
+        logger.info(f"Facts saved | dataset_id={dataset_id}")
+
+class KnowledgeStore:
+    def __init__(self, embedding_client: BaseEmbeddingClient, db_session: DBSession):
+        self.embedding_client = embedding_client
+        self.db_session = db_session
+
+    async def save_observation(
+            self,
+            dataset_id: str,
+            content: str,
+            confidence_score: float,
+            supersedes_id: int | None = None
+        ) -> int:
+            embedding = await self.embedding_client.generate_embedding(content)
+
+            new_observation = Observation(
+                dataset_id=dataset_id,
+                content=content,
+                embedding=embedding,
+                embedding_model=self.embedding_client.model,
+                confidence_score=confidence_score,
+                supersedes_id=supersedes_id
+            )
+
+            self.db_session.add(new_observation)
+            self.db_session.commit()
+
+            logger.info(f"Observation saved | dataset_id={dataset_id} | id={new_observation.id}")
+
+            return new_observation.id
+
+    async def get_relevant_observations(self, dataset_id: str, query: str, limit: int = 5) -> list[dict]:
+            query_embedding = await self.embedding_client.generate_embedding(query)
+
+            results = (
+                self.db_session.query(Observation)
+                .filter_by(dataset_id=dataset_id)
+                .order_by(Observation.embedding.cosine_distance(query_embedding))
+                .limit(limit)
+                .all()
+            )
+
+            logger.info(f"Retrieved {len(results)} relevant observations | dataset_id={dataset_id}")
+            return [{"id": obs.id, "content": obs.content} for obs in results]
