@@ -80,6 +80,15 @@ class FactStore:
         self.db_session.commit()
         logger.info(f"Facts saved | dataset_id={dataset_id}")
 
+    def get_facts(self, dataset_id: str) -> DatasetFacts | None:
+            result = (
+                self.db_session.query(DatasetFacts)
+                .filter_by(dataset_id=dataset_id)
+                .first()
+            )
+            logger.info(f"Facts retrieved | dataset_id={dataset_id} | found={result is not None}")
+            return result
+
 class KnowledgeStore:
     def __init__(self, embedding_client: BaseEmbeddingClient, db_session: DBSession):
         self.embedding_client = embedding_client
