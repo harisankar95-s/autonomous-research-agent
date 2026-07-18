@@ -1,0 +1,26 @@
+import pandas as pd
+from sqlalchemy import create_engine
+
+from src.utils.config import config
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+FILE_PATH = "data/titanic.csv"
+TABLE_NAME = "titanic"
+
+
+def main():
+    logger.info(f"Reading CSV file | path={FILE_PATH}")
+    df = pd.read_csv(FILE_PATH)
+    logger.info(f"Loaded dataframe | rows={len(df)} | columns={len(df.columns)}")
+
+    engine = create_engine(config.database_url)
+
+    logger.info(f"Writing to Postgres | table={TABLE_NAME}")
+    df.to_sql(TABLE_NAME, engine, if_exists="replace", index=False)
+    logger.info("Load complete")
+
+
+if __name__ == "__main__":
+    main()
