@@ -26,6 +26,12 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
                     }
                 }
         logger.info(f"Generating embedding | model={self.model}")
+        # NOTE: unlike GeminiClient, this has no retry logic for transient
+        # failures (429/503). Deferred deliberately when this client was
+        # first built. CI hit a real 503 on 2026-07-18, confirming this is
+        # a real gap, not just theoretical — worth adding exponential
+        # backoff (same pattern as GeminiClient._send_with_retry) before
+        # this client sees production traffic.
         response = await self.client.post(url, json=body)
         data     =  self._parse_response(response)
         return data
