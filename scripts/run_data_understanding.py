@@ -9,6 +9,8 @@ from src.llm.gemini_embeddings import GeminiEmbeddingClient
 from src.agent.data_understanding import create_data_understanding_agent
 from src.utils.config import config
 from src.utils.logger import get_logger
+from src.observability.langfuse_client import init_langfuse
+from langfuse import get_client
 
 logger = get_logger(__name__)
 
@@ -20,6 +22,7 @@ PROJECT_BRIEF = (
 
 
 async def main():
+    init_langfuse()
     engine = create_engine(config.database_url)
     SessionLocal = sessionmaker(bind=engine)
     db_session = SessionLocal()
@@ -56,6 +59,8 @@ async def main():
     logger.info(f"Cleaned up {len(temp_files)} temp files")
 
     db_session.close()
+
+    get_client().flush()
 
 
 if __name__ == "__main__":

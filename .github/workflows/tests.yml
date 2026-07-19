@@ -56,3 +56,6 @@ jobs:
           DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
           GEMINI_EMBEDDING_MODEL: ${{ secrets.GEMINI_EMBEDDING_MODEL }}
           DATASET_READER_URL: ${{ secrets.CI_DATASET_READER_URL }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}

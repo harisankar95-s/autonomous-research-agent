@@ -2,6 +2,7 @@ import time
 import asyncio
 import random
 import httpx
+from langfuse import observe
 
 from src.llm.client import BaseLLMClient, LLMResponse
 from src.utils.config import config
@@ -19,7 +20,7 @@ class GeminiClient(BaseLLMClient):
 
     def get_model_name(self) ->str:
         return self.model
-    
+    @observe(as_type="generation")
     async def send_message(
             self, 
             message: str,
