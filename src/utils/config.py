@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     database_url: str
     gemini_embedding_model: str
     dataset_reader_url: str
+    langfuse_secret_key: str
+    langfuse_public_key: str
+    langfuse_host: str
 
 
 @lru_cache
