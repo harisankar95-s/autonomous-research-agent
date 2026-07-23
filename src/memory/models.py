@@ -27,6 +27,23 @@ class DatasetFacts(Base):
     schema_notes: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
+class ModelingBrief(Base):
+    __tablename__ = "modeling_briefs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(unique=True)
+    label_status: Mapped[str] = mapped_column()
+    label_column: Mapped[str | None] = mapped_column(default=None)
+    label_notes: Mapped[str] = mapped_column()
+    feature_set: Mapped[list] = mapped_column(JSON)
+    preprocessing_rules: Mapped[list] = mapped_column(JSON)
+    validation_strategy: Mapped[str] = mapped_column()
+    confidence: Mapped[float] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
 class Observation(Base):
     __tablename__ = "observations"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -36,4 +53,12 @@ class Observation(Base):
     embedding_model: Mapped[str] = mapped_column()
     confidence_score: Mapped[float] = mapped_column()
     supersedes_id: Mapped[int | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+class AnalysisImage(Base):
+    __tablename__ = "analysis_images"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[str] = mapped_column()
+    file_path: Mapped[str] = mapped_column()
+    caption: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
