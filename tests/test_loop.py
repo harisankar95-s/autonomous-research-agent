@@ -82,7 +82,6 @@ async def test_agent_uses_search_tool():
 async def test_agent_handles_unknown_tool_gracefully():
     client = _ScriptedLLMClient([
         _tool_call_response("nonexistent_tool"),
-        _stop_response("nudge me"),
         _stop_response("done"),
     ])
     registry = ToolRegistry()
@@ -91,7 +90,7 @@ async def test_agent_handles_unknown_tool_gracefully():
     result = await agent.run("do something")
 
     assert result == "done"
-    assert client.calls == 3
+    assert client.calls == 2
 
 
 async def test_agent_handles_tool_exception_gracefully():
@@ -106,7 +105,6 @@ async def test_agent_handles_tool_exception_gracefully():
     )
     client = _ScriptedLLMClient([
         _tool_call_response("failing_tool"),
-        _stop_response("nudge me"),
         _stop_response("done"),
     ])
     registry = ToolRegistry()
@@ -116,29 +114,96 @@ async def test_agent_handles_tool_exception_gracefully():
     result = await agent.run("do something")
 
     assert result == "done"
-    assert client.calls == 3
+    assert client.calls == 2
 
 
-async def test_agent_nudges_before_finishing_without_recording_facts():
-    def record_dataset_facts():
-        return "Facts recorded successfully."
+def _brief_tool(complete: bool):
+    def finalize_modeling_brief():
+        if complete:
+            return {"text": "Modeling brief finalized - all required fields are complete.", "complete": True}
+        return {"text": "Brief saved, but still missing: feature_set.", "complete": False}
 
-    tool = Tool(
-        name="record_dataset_facts",
-        description="records facts",
+    return Tool(
+        name="finalize_modeling_brief",
+        description="finalizes the modeling brief",
         parameters={},
-        func=record_dataset_facts,
+        func=finalize_modeling_brief,
     )
+
+
+async def test_agent_nudges_before_finishing_without_complete_brief():
     client = _ScriptedLLMClient([
         _stop_response("too early"),
-        _tool_call_response("record_dataset_facts"),
+        _tool_call_response("finalize_modeling_brief"),
         _stop_response("done"),
     ])
     registry = ToolRegistry()
-    registry.register(tool)
+    registry.register(_brief_tool(complete=True))
     agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
 
     result = await agent.run("do something")
 
     assert result == "done"
     assert client.calls == 3
+
+
+async def test_agent_finishes_immediately_when_brief_already_complete():
+    client = _ScriptedLLMClient([
+        _tool_call_response("finalize_modeling_brief"),
+        _stop_response("done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_brief_tool(complete=True))
+    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+
+    result = await agent.run("do something")
+
+    assert result == "done"
+    assert client.calls == 2
+
+
+async def test_agent_stops_after_max_nudges_even_if_brief_stays_incomplete():
+    client = _ScriptedLLMClient([
+        _stop_response("attempt 1"),
+        _stop_response("attempt 2"),
+        _stop_response("attempt 3"),
+        _stop_response("attempt 4"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_brief_tool(complete=False))
+    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+
+    result = await agent.run("do something")
+
+    assert result == "attempt 4"
+    assert client.calls == 4
+
+
+def _image_tool(name, filename):
+    def make_plot():
+        return {"text": "plot saved", "images": [{"data": "ZmFrZV9wbmdfYnl0ZXM=", "filename": filename}]}
+
+    return Tool(name=name, description="produces a plot", parameters={}, func=make_plot)
+
+
+async def test_older_images_are_pruned_from_conversation_history():
+    client = _ScriptedLLMClient([
+        _tool_call_response("make_plot_a"),
+        _tool_call_response("make_plot_b"),
+        _tool_call_response("finalize_modeling_brief"),
+        _stop_response("done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_image_tool("make_plot_a", "figure_a.png"))
+    registry.register(_image_tool("make_plot_b", "figure_b.png"))
+    registry.register(_brief_tool(complete=True))
+    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+
+    await agent.run("do something")
+
+    all_parts = [part for turn in agent.conversation_history for part in turn["parts"]]
+    inline_data_parts = [p for p in all_parts if "inlineData" in p]
+    placeholder_texts = [p["text"] for p in all_parts if "text" in p and "previously shown" in p["text"]]
+
+    assert len(inline_data_parts) == 1
+    assert "figure_a.png" in placeholder_texts[0]

@@ -11,6 +11,7 @@ def test_compile_prompt_minimal():
     assert "Analyze solar panel data." in result
     assert "KNOWN FACTS" not in result
     assert "RELEVANT PRIOR FINDINGS" not in result
+    assert "MODELING READINESS" not in result
 
 
 def test_compile_prompt_full():
@@ -41,3 +42,14 @@ def test_compile_prompt_always_embeds_always_load_skill_bodies():
     assert "OUTLIERS VS ANOMALIES" in result
     # always-load skills shouldn't also be advertised in the discoverable catalog
     assert "general_statistical_rigor:" not in result
+
+
+def test_compile_prompt_includes_readiness_section_when_present():
+    result = compile_prompt(
+        role_prompt="You are a data scientist.",
+        project_brief="Analyze solar panel data.",
+        readiness="STILL MISSING: feature_set; validation_strategy"
+    )
+
+    assert "MODELING READINESS" in result
+    assert "STILL MISSING: feature_set; validation_strategy" in result

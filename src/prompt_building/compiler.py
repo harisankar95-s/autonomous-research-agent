@@ -5,7 +5,8 @@ def compile_prompt(
     role_prompt: str,
     project_brief: str,
     facts: str = "",
-    knowledge: list[str] | None = None
+    knowledge: list[str] | None = None,
+    readiness: str = ""
 ) -> str:
     if knowledge is None:
         knowledge = []
@@ -18,6 +19,9 @@ def compile_prompt(
     if knowledge:
         knowledge_text = "\n".join(f"- {item}" for item in knowledge)
         sections.append(f"RELEVANT PRIOR FINDINGS:\n{knowledge_text}")
+
+    if readiness:
+        sections.append(f"MODELING READINESS:\n{readiness}")
 
     for body in get_always_load_bodies():
         sections.append(f"METHODOLOGY STANDARDS:\n{body}")

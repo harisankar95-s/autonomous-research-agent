@@ -16,7 +16,7 @@ class GeminiClient(BaseLLMClient):
         self.api_key  = config.gemini_api_key
         self.model    = config.gemini_model
         self.base_url = config.gemini_url
-        self.client   = httpx.AsyncClient(timeout =30.0)
+        self.client   = httpx.AsyncClient(timeout=120.0)
 
     def get_model_name(self) ->str:
         return self.model
@@ -96,11 +96,14 @@ class GeminiClient(BaseLLMClient):
 
                 return response
                 
-            except httpx.TimeoutException:
+            except httpx.TransportError as e:
                 wait = (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Timeout | attempt {attempt + 1}/{max_retries} | waiting {wait:.1f}s")
+                logger.warning(
+                    f"Network error ({type(e).__name__}) | attempt {attempt + 1}/{max_retries} | "
+                    f"waiting {wait:.1f}s"
+                )
                 await asyncio.sleep(wait)
-                last_error = "timeout"
+                last_error = f"{type(e).__name__}: {e}"
                 continue
 
         else:
@@ -112,7 +115,7 @@ class GeminiClient(BaseLLMClient):
         logger.debug(f"Raw response: {data}")
         usage = data.get("usageMetadata", {})
         candidate = data["candidates"][0]
-        parts = candidate["content"]["parts"]
+        parts = candidate.get("content", {}).get("parts", [])
 
         tool_name = None
         tool_args = None
