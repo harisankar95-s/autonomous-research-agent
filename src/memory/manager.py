@@ -1,10 +1,15 @@
 from src.llm.client import BaseLLMClient, BaseEmbeddingClient
 from sqlalchemy.orm import Session as DBSession
-from src.memory.models import Session,DatasetFacts,Observation
+from src.memory.models import Session,DatasetFacts,Observation,ModelingBrief,AnalysisImage
 from src.utils.logger import get_logger
+import base64
+import os
 import uuid
 
 logger = get_logger(__name__)
+
+VALID_LABEL_STATUSES = ("present", "absent", "undetermined")
+ANALYSIS_IMAGES_DIR = os.path.join("data", "analysis_images")
 
 class MemoryManager:
     def __init__(self,llm_client:BaseLLMClient,embedding_client:BaseEmbeddingClient,db_session: DBSession):
@@ -148,3 +153,111 @@ class KnowledgeStore:
 
             logger.info(f"Retrieved {len(results)} relevant observations | dataset_id={dataset_id}")
             return [{"id": obs.id, "content": obs.content} for obs in results]
+
+class ModelingBriefStore:
+    def __init__(self, db_session: DBSession):
+        self.db_session = db_session
+
+    def get_brief(self, dataset_id: str) -> ModelingBrief | None:
+        result = (
+            self.db_session.query(ModelingBrief)
+            .filter_by(dataset_id=dataset_id)
+            .first()
+        )
+        logger.info(f"Modeling brief retrieved | dataset_id={dataset_id} | found={result is not None}")
+        return result
+
+    def save_brief(
+        self,
+        dataset_id: str,
+        label_status: str,
+        label_column: str | None,
+        label_notes: str,
+        feature_set: list,
+        preprocessing_rules: list,
+        validation_strategy: str,
+        confidence: float
+    ) -> ModelingBrief:
+        existing = self.get_brief(dataset_id)
+
+        if existing:
+            existing.label_status = label_status
+            existing.label_column = label_column
+            existing.label_notes = label_notes
+            existing.feature_set = feature_set
+            existing.preprocessing_rules = preprocessing_rules
+            existing.validation_strategy = validation_strategy
+            existing.confidence = confidence
+            self.db_session.commit()
+            logger.info(f"Modeling brief updated | dataset_id={dataset_id}")
+            return existing
+        else:
+            new_brief = ModelingBrief(
+                dataset_id=dataset_id,
+                label_status=label_status,
+                label_column=label_column,
+                label_notes=label_notes,
+                feature_set=feature_set,
+                preprocessing_rules=preprocessing_rules,
+                validation_strategy=validation_strategy,
+                confidence=confidence
+            )
+            self.db_session.add(new_brief)
+            self.db_session.commit()
+            logger.info(f"Modeling brief saved | dataset_id={dataset_id}")
+            return new_brief
+
+
+def compute_missing_fields(brief: ModelingBrief | None) -> list[str]:
+    if brief is None:
+        return [
+            "label_status (present/absent/undetermined)",
+            "label_notes",
+            "feature_set",
+            "preprocessing_rules",
+            "validation_strategy",
+            "confidence",
+        ]
+
+    missing = []
+    if not brief.label_status or brief.label_status not in VALID_LABEL_STATUSES:
+        missing.append("label_status (must be one of present/absent/undetermined)")
+    if brief.label_status == "present" and not brief.label_column:
+        missing.append("label_column (required since label_status is 'present')")
+    if not brief.label_notes:
+        missing.append("label_notes (reasoning for the label status determination)")
+    if not brief.feature_set:
+        missing.append("feature_set (non-empty list of columns with role and reason)")
+    if not brief.preprocessing_rules:
+        missing.append("preprocessing_rules (non-empty - state 'none identified' if genuinely none)")
+    if not brief.validation_strategy:
+        missing.append("validation_strategy")
+    if brief.confidence is None:
+        missing.append("confidence")
+
+    return missing
+
+
+class ImageStore:
+    def __init__(self, db_session: DBSession):
+        self.db_session = db_session
+
+    def save_image(self, dataset_id: str, image_b64: str, caption: str = "") -> AnalysisImage:
+        dataset_dir = os.path.join(ANALYSIS_IMAGES_DIR, dataset_id)
+        os.makedirs(dataset_dir, exist_ok=True)
+
+        filename = f"{uuid.uuid4().hex}.png"
+        file_path = os.path.join(dataset_dir, filename)
+        with open(file_path, "wb") as f:
+            f.write(base64.b64decode(image_b64))
+
+        record = AnalysisImage(
+            dataset_id=dataset_id,
+            file_path=file_path,
+            caption=caption or None
+        )
+        self.db_session.add(record)
+        self.db_session.commit()
+
+        logger.info(f"Analysis image saved | dataset_id={dataset_id} | file_path={file_path}")
+        return record
