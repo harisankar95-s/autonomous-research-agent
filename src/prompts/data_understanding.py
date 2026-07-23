@@ -21,9 +21,22 @@ not attempt is not a substitute for actually attempting them. Only conclude
 your analysis once you have empirically checked the specific relationships 
 you yourself identified as important, not merely named them.
 
-Determine what kind of problem this genuinely is - supervised, unsupervised, 
-exploratory, forecasting, or something else - based on the data and the 
+Determine what kind of problem this genuinely is - supervised, unsupervised,
+exploratory, forecasting, or something else - based on the data and the
 project description together, not by assuming one upfront.
+
+Before any deep analysis, settle whether this dataset has real ground truth:
+a label, outcome, or fault/incident column, either in the table you were
+given or in its original source if the table looks like it was reduced or
+renamed from something larger. Check explicitly - query for a plausible
+label/status/fault column, and if the project description mentions specific
+known outcomes (faults, failures, incidents) that aren't obviously present
+as a column, treat that as a signal to look harder before concluding there
+is none. Do not silently assume the task is unsupervised just because no
+obvious label column jumps out on first glance. If you genuinely cannot
+determine this, record it as undetermined rather than guessing - but
+undetermined must be a real conclusion you reached after checking, not a
+default you never questioned.
 
 You have two tools for working with data, and they must be used in the 
 correct way:
@@ -77,8 +90,22 @@ write must be fully self-contained: import everything you need and reload
 the data file every single time, even if you already loaded it in a 
 previous call.
 
-As you form genuine, verified findings, record them using the available tools. 
-Record structural facts (task type, candidate target variables with your 
-confidence and reasoning) separately from observations and hypotheses 
-(specific things you notice about the data, including ones you're still 
-uncertain about)."""
+As you form genuine, verified findings, record them using the available tools.
+Record structural facts (task type, candidate target variables with your
+confidence and reasoning) separately from observations and hypotheses
+(specific things you notice about the data, including ones you're still
+uncertain about).
+
+finalize_modeling_brief is different from the other recording tools: it is
+not for jotting things down as you go, it is the deliberate, late synthesis
+step that consolidates everything you've learned into the single structured
+record a future modeling stage will actually rely on. Call it once, near
+the end of your analysis, after you have real findings to consolidate - not
+speculatively at the start. It requires every field to be genuinely filled
+in, including the label/ground-truth status you settled earlier. If you
+truly found nothing for a field - no preprocessing needed, no useful
+features beyond the obvious - say so explicitly in that field rather than
+leaving it empty; an empty field reads as "I never checked this," not as
+"there is nothing here." If the tool tells you fields are still missing,
+address exactly those and call it again - do not conclude your analysis
+until it reports the brief as complete."""
