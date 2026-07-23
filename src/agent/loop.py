@@ -15,7 +15,25 @@ class ReactAgent:
         self.system_prompt = system_prompt
         self.max_iterations = 100
         self.conversation_history = []
-    @observe()    
+        self._image_turns = []  # [(history_index, [filenames])] not yet pruned
+
+    def _prune_old_images(self) -> None:
+        """Keep only the most recently shown turn's images as real inlineData -
+        every older image is collapsed to a text placeholder so conversation
+        history doesn't resend every image ever generated on every call."""
+        while len(self._image_turns) > 1:
+            old_index, old_filenames = self._image_turns.pop(0)
+            old_parts = self.conversation_history[old_index]["parts"]
+            new_parts = []
+            filename_iter = iter(old_filenames)
+            for part in old_parts:
+                if "inlineData" in part:
+                    new_parts.append({"text": f"[Image previously shown: {next(filename_iter)}]"})
+                else:
+                    new_parts.append(part)
+            self.conversation_history[old_index]["parts"] = new_parts
+
+    @observe()
     async def run(self, query: str, context: list[str] | None = None) -> str:
         logger.info(f"Start ReAct loop | query={query}")
         langfuse = get_client()
@@ -31,8 +49,13 @@ class ReactAgent:
         
         self.conversation_history.append({"role": "user", "parts": [{"text": query}]})
 
-        facts_recorded = False
-        nudged = False
+        # The modeling-brief completion gate only applies to agents that
+        # actually register that tool - a generic ReactAgent (e.g. a plain
+        # search agent) has no way to satisfy it and would be nudged forever.
+        requires_complete_brief = "finalize_modeling_brief" in self.tool_registry.tools
+        brief_complete = not requires_complete_brief
+        nudge_count = 0
+        max_nudges = 3
 
         for iteration in range(self.max_iterations):
             logger.info(f"Iteration {iteration + 1}/{self.max_iterations}")
@@ -73,9 +96,9 @@ class ReactAgent:
                                 f"Tool call error | tool={response.tool_name} | error={e}"
                             )
 
-                    if isinstance(tool_result, dict) and "images" in tool_result:
+                    if isinstance(tool_result, dict):
                         text_result = tool_result.get("text", "")
-                        images = tool_result["images"]
+                        images = tool_result.get("images", [])
                     else:
                         text_result = tool_result
                         images = []
@@ -84,8 +107,8 @@ class ReactAgent:
 
                 logger.info(f"Tool result received | tool={response.tool_name} | images={len(images)}")
 
-                if response.tool_name == "record_dataset_facts" and tool is not None:
-                    facts_recorded = True
+                if response.tool_name == "finalize_modeling_brief" and tool is not None:
+                    brief_complete = isinstance(tool_result, dict) and bool(tool_result.get("complete"))
 
                 self.conversation_history.append({
                     "role": "model",
@@ -93,14 +116,22 @@ class ReactAgent:
                 })
                 parts = [{"functionResponse": {"name": response.tool_name, "response": {"output": text_result}}}]
                 parts.extend(
-                    {"inlineData": {"mimeType": "image/png", "data": img}} for img in images
+                    {"inlineData": {"mimeType": "image/png", "data": img["data"]}} for img in images
                 )
+                turn_index = len(self.conversation_history)
                 self.conversation_history.append({"role": "user", "parts": parts})
 
+                if images:
+                    self._image_turns.append((turn_index, [img["filename"] for img in images]))
+                    self._prune_old_images()
+
             elif response.finish_reason == "STOP":
-                if not facts_recorded and not nudged:
-                    nudged = True
-                    logger.info("Agent tried to stop without recording facts | nudging")
+                if not brief_complete and nudge_count < max_nudges:
+                    nudge_count += 1
+                    logger.info(
+                        f"Agent tried to stop without a complete modeling brief | "
+                        f"nudging ({nudge_count}/{max_nudges})"
+                    )
                     self.conversation_history.append({
                         "role": "model",
                         "parts": response.raw_parts
@@ -108,9 +139,10 @@ class ReactAgent:
                     self.conversation_history.append({
                         "role": "user",
                         "parts": [{"text": (
-                            "You have not called record_dataset_facts yet. Before "
-                            "concluding, record the structural facts you've determined "
-                            "about this dataset."
+                            "You have not finalized a complete modeling brief yet. "
+                            "Before concluding, call finalize_modeling_brief with all "
+                            "required fields - if you already tried and it told you "
+                            "what was missing, address that and call it again."
                         )}]
                     })
                     continue
