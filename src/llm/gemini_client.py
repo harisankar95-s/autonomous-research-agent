@@ -112,21 +112,24 @@ class GeminiClient(BaseLLMClient):
         logger.debug(f"Raw response: {data}")
         usage = data.get("usageMetadata", {})
         candidate = data["candidates"][0]
-        part = candidate["content"]["parts"][0]
-        
-        if "functionCall" in part:
-            tool_name = part["functionCall"]["name"]
-            tool_args = part["functionCall"]["args"]
-            content = ""
-            finish_reason = "TOOL_CALLS"
-        else:
-            content = part["text"]
-            tool_name = None
-            tool_args = None
-            finish_reason = candidate.get("finishReason", "STOP")
-        
+        parts = candidate["content"]["parts"]
+
+        tool_name = None
+        tool_args = None
+        text_chunks = []
+        for part in parts:
+            if "functionCall" in part:
+                if tool_name is None:
+                    tool_name = part["functionCall"]["name"]
+                    tool_args = part["functionCall"]["args"]
+            elif "text" in part:
+                text_chunks.append(part["text"])
+
+        content = "".join(text_chunks)
+        finish_reason = "TOOL_CALLS" if tool_name else candidate.get("finishReason", "STOP")
+
         logger.debug(f"Parsed response | tokens={usage.get('totalTokenCount', 0)} | finish={finish_reason}")
-        
+
         return LLMResponse(
             content=content,
             model=self.model,
@@ -137,6 +140,6 @@ class GeminiClient(BaseLLMClient):
             finish_reason=finish_reason,
             tool_name=tool_name,
             tool_args=tool_args,
-            raw_parts=candidate["content"]["parts"]
+            raw_parts=parts
         )
     
