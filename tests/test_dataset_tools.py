@@ -33,6 +33,67 @@ def test_record_facts_tool_writes_to_correct_dataset():
     db_session.close()
 
 
+def test_record_facts_tool_updates_existing_facts_instead_of_raising():
+    engine = create_engine(config.database_url)
+    SessionLocal = sessionmaker(bind=engine)
+    db_session = SessionLocal()
+
+    fact_store = FactStore(db_session)
+    dataset_id = str(uuid.uuid4())
+
+    tool = make_record_facts_tool(fact_store, dataset_id)
+
+    tool.func(
+        inferred_task_type="classification",
+        candidate_targets=[{"column": "churned", "confidence": 0.6, "reason": "first guess"}]
+    )
+
+    result = tool.func(
+        inferred_task_type="regression",
+        candidate_targets=[{"column": "tenure", "confidence": 0.9, "reason": "revised conclusion"}]
+    )
+
+    assert "recorded" in result.lower()
+
+    saved = fact_store.get_facts(dataset_id)
+    assert saved is not None
+    assert saved.inferred_task_type == "regression"
+    assert saved.candidate_targets[0]["column"] == "tenure"
+
+    db_session.close()
+
+
+def test_record_facts_tool_saves_and_preserves_schema_notes():
+    engine = create_engine(config.database_url)
+    SessionLocal = sessionmaker(bind=engine)
+    db_session = SessionLocal()
+
+    fact_store = FactStore(db_session)
+    dataset_id = str(uuid.uuid4())
+
+    tool = make_record_facts_tool(fact_store, dataset_id)
+
+    tool.func(
+        inferred_task_type="classification",
+        candidate_targets=[],
+        schema_notes='Column "System_Name" is mixed-case and must be double-quoted in SQL.'
+    )
+
+    saved = fact_store.get_facts(dataset_id)
+    assert saved.schema_notes == 'Column "System_Name" is mixed-case and must be double-quoted in SQL.'
+
+    # A later call that omits schema_notes should not erase what's already known
+    tool.func(
+        inferred_task_type="classification",
+        candidate_targets=[]
+    )
+
+    saved = fact_store.get_facts(dataset_id)
+    assert saved.schema_notes == 'Column "System_Name" is mixed-case and must be double-quoted in SQL.'
+
+    db_session.close()
+
+
 async def test_record_observation_tool_writes_to_correct_dataset():
     engine = create_engine(config.database_url)
     SessionLocal = sessionmaker(bind=engine)
