@@ -1,4 +1,6 @@
-from src.tools.code_execution import make_execute_python_code_tool
+import time
+
+from src.tools.code_execution import make_execute_python_code_tool, EXECUTION_TIMEOUT_SECONDS
 
 
 def test_execute_python_code():
@@ -21,3 +23,50 @@ def test_network_is_disabled():
     )
     response = tool.func(code=code)
     assert "network worked" not in response
+
+
+def test_reading_app_data_csv_without_data_path_fails_fast():
+    temp_files = []
+    tool = make_execute_python_code_tool(temp_files)
+
+    start = time.monotonic()
+    response = tool.func(code="import pandas as pd\npd.read_csv('/app/data.csv')")
+    elapsed = time.monotonic() - start
+
+    assert "data_path" in response
+    assert elapsed < 5  # should fail before ever touching Docker
+
+
+def test_saved_plot_is_returned_as_image():
+    temp_files = []
+    tool = make_execute_python_code_tool(temp_files)
+
+    code = (
+        "import matplotlib\n"
+        "matplotlib.use('Agg')\n"
+        "import matplotlib.pyplot as plt\n"
+        "plt.figure(figsize=(4, 3))\n"
+        "plt.plot([1, 2, 3], [1, 4, 9])\n"
+        "plt.savefig('/app/output/plot.png')\n"
+        "print('plot saved')"
+    )
+    response = tool.func(code=code)
+
+    assert isinstance(response, dict)
+    assert "plot saved" in response["text"]
+    assert len(response["images"]) == 1
+    assert len(response["images"][0]) > 0
+
+
+def test_long_running_code_is_terminated_by_timeout():
+    temp_files = []
+    tool = make_execute_python_code_tool(temp_files)
+
+    code = "import time\ntime.sleep(9999)"
+
+    start = time.monotonic()
+    response = tool.func(code=code)
+    elapsed = time.monotonic() - start
+
+    assert "timeout" in response.lower()
+    assert elapsed < EXECUTION_TIMEOUT_SECONDS + 30
