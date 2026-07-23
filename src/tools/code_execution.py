@@ -7,6 +7,7 @@ import os
 
 import requests
 
+from src.memory.manager import ImageStore
 from src.tools.base import Tool
 from src.utils.logger import get_logger
 
@@ -14,9 +15,10 @@ logger = get_logger(__name__)
 
 EXECUTION_TIMEOUT_SECONDS = 60
 MAX_IMAGES_RETURNED = 6
+CAPTION_PREVIEW_LENGTH = 200
 
 
-def make_execute_python_code_tool(temp_files: list) -> Tool:
+def make_execute_python_code_tool(temp_files: list, dataset_id: str, image_store: ImageStore) -> Tool:
     def execute_python_code(code: str, data_path: str = "") -> str | dict:
         if data_path and not os.path.exists(data_path):
             error_msg = (
@@ -92,10 +94,13 @@ def make_execute_python_code_tool(temp_files: list) -> Tool:
                 except Exception:
                     pass
 
+        caption = code[:CAPTION_PREVIEW_LENGTH]
         images = []
         for img_path in sorted(glob.glob(os.path.join(output_dir, "*.png")))[:MAX_IMAGES_RETURNED]:
             with open(img_path, "rb") as img_f:
-                images.append(base64.b64encode(img_f.read()).decode("ascii"))
+                image_b64 = base64.b64encode(img_f.read()).decode("ascii")
+            record = image_store.save_image(dataset_id, image_b64, caption=caption)
+            images.append({"data": image_b64, "filename": os.path.basename(record.file_path)})
         shutil.rmtree(output_dir, ignore_errors=True)
 
         logger.info(f"Code execution completed | images={len(images)}")
