@@ -13,7 +13,7 @@ class ReactAgent:
         self.llm_client = llm_client
         self.tool_registry = tool_registry
         self.system_prompt = system_prompt
-        self.max_iterations = 25
+        self.max_iterations = 100
         self.conversation_history = []
     @observe()    
     async def run(self, query: str, context: list[str] | None = None) -> str:
@@ -30,7 +30,10 @@ class ReactAgent:
             full_system_prompt = self.system_prompt
         
         self.conversation_history.append({"role": "user", "parts": [{"text": query}]})
-        
+
+        facts_recorded = False
+        nudged = False
+
         for iteration in range(self.max_iterations):
             logger.info(f"Iteration {iteration + 1}/{self.max_iterations}")
             response = await self.llm_client.send_message(
@@ -39,7 +42,7 @@ class ReactAgent:
                 tools=self.tool_registry.get_all_schemas(),
                 conversation_history=self.conversation_history
             )
-            
+
             if response.tool_name:
                 logger.info(f"Tool call | tool={response.tool_name} | args={response.tool_args}")
                 tool = self.tool_registry.get_tool(response.tool_name)
@@ -49,29 +52,74 @@ class ReactAgent:
                     name=response.tool_name,
                     input=response.tool_args,
                 ) as span:
-                    if inspect.iscoroutinefunction(tool.func):
-                        tool_result = await tool.func(**response.tool_args)
+                    if tool is None:
+                        tool_result = (
+                            f"Tool call failed: no tool named '{response.tool_name}' "
+                            f"exists. Check the tool name against your available tools."
+                        )
+                        logger.warning(f"Unknown tool requested | tool={response.tool_name}")
                     else:
-                        tool_result = tool.func(**response.tool_args)
-                    span.update(output=tool_result)
+                        try:
+                            if inspect.iscoroutinefunction(tool.func):
+                                tool_result = await tool.func(**response.tool_args)
+                            else:
+                                tool_result = tool.func(**response.tool_args)
+                        except Exception as e:
+                            tool_result = (
+                                f"Tool call failed: {e}. Check that you provided all "
+                                f"required arguments for {response.tool_name}."
+                            )
+                            logger.warning(
+                                f"Tool call error | tool={response.tool_name} | error={e}"
+                            )
 
-                logger.info(f"Tool result received | tool={response.tool_name}")
-                
+                    if isinstance(tool_result, dict) and "images" in tool_result:
+                        text_result = tool_result.get("text", "")
+                        images = tool_result["images"]
+                    else:
+                        text_result = tool_result
+                        images = []
+
+                    span.update(output=text_result)
+
+                logger.info(f"Tool result received | tool={response.tool_name} | images={len(images)}")
+
+                if response.tool_name == "record_dataset_facts" and tool is not None:
+                    facts_recorded = True
+
                 self.conversation_history.append({
                     "role": "model",
                     "parts": response.raw_parts
                 })
-                self.conversation_history.append({
-                    "role": "user",
-                    "parts": [{"functionResponse": {"name": response.tool_name, "response": {"output": tool_result}}}]
-                })
-                
+                parts = [{"functionResponse": {"name": response.tool_name, "response": {"output": text_result}}}]
+                parts.extend(
+                    {"inlineData": {"mimeType": "image/png", "data": img}} for img in images
+                )
+                self.conversation_history.append({"role": "user", "parts": parts})
+
             elif response.finish_reason == "STOP":
+                if not facts_recorded and not nudged:
+                    nudged = True
+                    logger.info("Agent tried to stop without recording facts | nudging")
+                    self.conversation_history.append({
+                        "role": "model",
+                        "parts": response.raw_parts
+                    })
+                    self.conversation_history.append({
+                        "role": "user",
+                        "parts": [{"text": (
+                            "You have not called record_dataset_facts yet. Before "
+                            "concluding, record the structural facts you've determined "
+                            "about this dataset."
+                        )}]
+                    })
+                    continue
+
                 logger.info(f"Agent finished | iterations={iteration + 1}")
                 self.conversation_history.append({
                     "role": "model",
                     "parts": response.raw_parts
                 })
                 return response.content
-        
+
         return "Max iterations reached without a final answer"

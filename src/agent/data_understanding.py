@@ -9,6 +9,7 @@ from src.tools.sql_query import make_fetch_data_tool
 from src.tools.code_execution import make_execute_python_code_tool
 from src.tools.fact_recording import make_record_facts_tool
 from src.tools.knowledge_recording import make_record_observation_tool
+from src.tools.skill_loading import make_load_skill_tool
 
 
 async def create_data_understanding_agent(
@@ -30,6 +31,8 @@ async def create_data_understanding_agent(
             f"Task type: {existing_facts.inferred_task_type}\n"
             f"Candidate targets: {existing_facts.candidate_targets}"
         )
+        if existing_facts.schema_notes:
+            facts_text += f"\nSchema notes: {existing_facts.schema_notes}"
 
     existing_observations = await knowledge_store.get_relevant_observations(
         dataset_id=dataset_id,
@@ -42,6 +45,7 @@ async def create_data_understanding_agent(
     registry.register(make_execute_python_code_tool(temp_files))
     registry.register(make_record_facts_tool(fact_store, dataset_id))
     registry.register(make_record_observation_tool(knowledge_store, dataset_id))
+    registry.register(make_load_skill_tool())
 
     system_prompt = compile_prompt(
         role_prompt=ROLE_PROMPT,

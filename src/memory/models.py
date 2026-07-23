@@ -24,6 +24,7 @@ class DatasetFacts(Base):
     dataset_id: Mapped[str] = mapped_column(unique=True)
     inferred_task_type: Mapped[str] = mapped_column()
     candidate_targets: Mapped[list] = mapped_column(JSON)
+    schema_notes: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 class Observation(Base):

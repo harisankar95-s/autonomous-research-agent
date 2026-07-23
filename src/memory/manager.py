@@ -69,16 +69,32 @@ class FactStore:
     def __init__(self, db_session: DBSession):
         self.db_session = db_session
 
-    def save_facts(self, dataset_id: str, inferred_task_type: str, candidate_targets: list) -> None:
+    def save_facts(
+        self,
+        dataset_id: str,
+        inferred_task_type: str,
+        candidate_targets: list,
+        schema_notes: str | None = None
+    ) -> None:
+        existing = self.get_facts(dataset_id)
 
-        new_fact = DatasetFacts(
-            dataset_id = dataset_id,
-            inferred_task_type = inferred_task_type,
-            candidate_targets = candidate_targets
-        )
-        self.db_session.add(new_fact)
-        self.db_session.commit()
-        logger.info(f"Facts saved | dataset_id={dataset_id}")
+        if existing:
+            existing.inferred_task_type = inferred_task_type
+            existing.candidate_targets = candidate_targets
+            if schema_notes:
+                existing.schema_notes = schema_notes
+            self.db_session.commit()
+            logger.info(f"Facts updated | dataset_id={dataset_id}")
+        else:
+            new_fact = DatasetFacts(
+                dataset_id = dataset_id,
+                inferred_task_type = inferred_task_type,
+                candidate_targets = candidate_targets,
+                schema_notes = schema_notes
+            )
+            self.db_session.add(new_fact)
+            self.db_session.commit()
+            logger.info(f"Facts saved | dataset_id={dataset_id}")
 
     def get_facts(self, dataset_id: str) -> DatasetFacts | None:
             result = (

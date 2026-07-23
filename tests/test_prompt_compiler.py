@@ -28,3 +28,16 @@ def test_compile_prompt_full():
     assert "RELEVANT PRIOR FINDINGS" in result
     assert "Column A is skewed" in result
     assert "Column B has missing values" in result
+
+
+def test_compile_prompt_always_embeds_always_load_skill_bodies():
+    result = compile_prompt(
+        role_prompt="You are a data scientist.",
+        project_brief="Analyze solar panel data."
+    )
+
+    assert "METHODOLOGY STANDARDS" in result
+    assert "GROUNDED THRESHOLDS" in result
+    assert "OUTLIERS VS ANOMALIES" in result
+    # always-load skills shouldn't also be advertised in the discoverable catalog
+    assert "general_statistical_rigor:" not in result
