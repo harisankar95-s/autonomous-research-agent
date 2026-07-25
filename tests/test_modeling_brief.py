@@ -1,16 +1,5 @@
-import uuid
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from src.memory.manager import ModelingBriefStore, compute_missing_fields
 from src.tools.modeling_brief import make_finalize_modeling_brief_tool
-from src.utils.config import config
-
-
-def _session():
-    engine = create_engine(config.database_url)
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
 
 
 def test_compute_missing_fields_all_missing_when_no_brief():
@@ -18,10 +7,8 @@ def test_compute_missing_fields_all_missing_when_no_brief():
     assert len(missing) == 6
 
 
-def test_finalize_modeling_brief_tool_reports_missing_fields_when_incomplete():
-    db_session = _session()
+def test_finalize_modeling_brief_tool_reports_missing_fields_when_incomplete(db_session, dataset_id):
     brief_store = ModelingBriefStore(db_session)
-    dataset_id = str(uuid.uuid4())
 
     tool = make_finalize_modeling_brief_tool(brief_store, dataset_id)
 
@@ -38,13 +25,9 @@ def test_finalize_modeling_brief_tool_reports_missing_fields_when_incomplete():
     assert "feature_set" in result["text"]
     assert "validation_strategy" in result["text"]
 
-    db_session.close()
 
-
-def test_finalize_modeling_brief_tool_reports_complete_when_all_fields_present():
-    db_session = _session()
+def test_finalize_modeling_brief_tool_reports_complete_when_all_fields_present(db_session, dataset_id):
     brief_store = ModelingBriefStore(db_session)
-    dataset_id = str(uuid.uuid4())
 
     tool = make_finalize_modeling_brief_tool(brief_store, dataset_id)
 
@@ -65,13 +48,9 @@ def test_finalize_modeling_brief_tool_reports_complete_when_all_fields_present()
     assert saved.label_column == "churned"
     assert compute_missing_fields(saved) == []
 
-    db_session.close()
 
-
-def test_finalize_modeling_brief_tool_upserts_instead_of_raising():
-    db_session = _session()
+def test_finalize_modeling_brief_tool_upserts_instead_of_raising(db_session, dataset_id):
     brief_store = ModelingBriefStore(db_session)
-    dataset_id = str(uuid.uuid4())
 
     tool = make_finalize_modeling_brief_tool(brief_store, dataset_id)
 
@@ -97,13 +76,9 @@ def test_finalize_modeling_brief_tool_upserts_instead_of_raising():
     assert saved.label_status == "absent"
     assert saved.validation_strategy == "v2"
 
-    db_session.close()
 
-
-def test_label_column_required_when_label_status_present():
-    db_session = _session()
+def test_label_column_required_when_label_status_present(db_session, dataset_id):
     brief_store = ModelingBriefStore(db_session)
-    dataset_id = str(uuid.uuid4())
 
     tool = make_finalize_modeling_brief_tool(brief_store, dataset_id)
 
@@ -119,5 +94,3 @@ def test_label_column_required_when_label_status_present():
 
     assert result["complete"] is False
     assert "label_column" in result["text"]
-
-    db_session.close()

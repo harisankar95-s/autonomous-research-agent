@@ -1,38 +1,22 @@
 import os
 import time
-import uuid
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from src.memory.manager import ImageStore
 from src.tools.code_execution import make_execute_python_code_tool, EXECUTION_TIMEOUT_SECONDS
-from src.utils.config import config
 
 
-def _tool(temp_files, dataset_id=None):
-    dataset_id = dataset_id or str(uuid.uuid4())
-    engine = create_engine(config.database_url)
-    SessionLocal = sessionmaker(bind=engine)
-    db_session = SessionLocal()
-    image_store = ImageStore(db_session)
-    return make_execute_python_code_tool(temp_files, dataset_id, image_store), dataset_id, db_session
-
-
-def test_execute_python_code():
+def test_execute_python_code(db_session, dataset_id):
     temp_files = []
-    tool, _, db_session = _tool(temp_files)
+    tool = make_execute_python_code_tool(temp_files, dataset_id, ImageStore(db_session))
 
     code = "print(2+2)"
     response = tool.func(code=code)
     assert response.strip() == "4"
 
-    db_session.close()
 
-
-def test_network_is_disabled():
+def test_network_is_disabled(db_session, dataset_id):
     temp_files = []
-    tool, _, db_session = _tool(temp_files)
+    tool = make_execute_python_code_tool(temp_files, dataset_id, ImageStore(db_session))
 
     code = (
         "import urllib.request\n"
@@ -42,12 +26,10 @@ def test_network_is_disabled():
     response = tool.func(code=code)
     assert "network worked" not in response
 
-    db_session.close()
 
-
-def test_reading_app_data_csv_without_data_path_fails_fast():
+def test_reading_app_data_csv_without_data_path_fails_fast(db_session, dataset_id):
     temp_files = []
-    tool, _, db_session = _tool(temp_files)
+    tool = make_execute_python_code_tool(temp_files, dataset_id, ImageStore(db_session))
 
     start = time.monotonic()
     response = tool.func(code="import pandas as pd\npd.read_csv('/app/data.csv')")
@@ -56,13 +38,10 @@ def test_reading_app_data_csv_without_data_path_fails_fast():
     assert "data_path" in response
     assert elapsed < 5  # should fail before ever touching Docker
 
-    db_session.close()
 
-
-def test_saved_plot_is_returned_as_image_and_persisted():
+def test_saved_plot_is_returned_as_image_and_persisted(db_session, dataset_id):
     temp_files = []
-    dataset_id = str(uuid.uuid4())
-    tool, dataset_id, db_session = _tool(temp_files, dataset_id)
+    tool = make_execute_python_code_tool(temp_files, dataset_id, ImageStore(db_session))
 
     code = (
         "import matplotlib\n"
@@ -88,12 +67,10 @@ def test_saved_plot_is_returned_as_image_and_persisted():
     assert os.path.exists(saved.file_path)
     assert saved.file_path.endswith(image["filename"])
 
-    db_session.close()
 
-
-def test_long_running_code_is_terminated_by_timeout():
+def test_long_running_code_is_terminated_by_timeout(db_session, dataset_id):
     temp_files = []
-    tool, _, db_session = _tool(temp_files)
+    tool = make_execute_python_code_tool(temp_files, dataset_id, ImageStore(db_session))
 
     code = "import time\ntime.sleep(9999)"
 
@@ -103,5 +80,3 @@ def test_long_running_code_is_terminated_by_timeout():
 
     assert "timeout" in response.lower()
     assert elapsed < EXECUTION_TIMEOUT_SECONDS + 30
-
-    db_session.close()

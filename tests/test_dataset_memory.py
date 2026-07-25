@@ -1,19 +1,9 @@
-import uuid
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from src.memory.manager import FactStore, KnowledgeStore
 from src.llm.gemini_embeddings import GeminiEmbeddingClient
-from src.utils.config import config
 
 
-async def test_fact_store_saves_facts():
-    engine = create_engine(config.database_url)
-    SessionLocal = sessionmaker(bind=engine)
-    db_session = SessionLocal()
-
+async def test_fact_store_saves_facts(db_session, dataset_id):
     fact_store = FactStore(db_session)
-    dataset_id = str(uuid.uuid4())
 
     fact_store.save_facts(
         dataset_id=dataset_id,
@@ -23,17 +13,10 @@ async def test_fact_store_saves_facts():
         ]
     )
 
-    db_session.close()
 
-
-async def test_knowledge_store_saves_and_retrieves():
-    engine = create_engine(config.database_url)
-    SessionLocal = sessionmaker(bind=engine)
-    db_session = SessionLocal()
-
+async def test_knowledge_store_saves_and_retrieves(db_session, dataset_id):
     embedding_client = GeminiEmbeddingClient()
     knowledge_store = KnowledgeStore(embedding_client, db_session)
-    dataset_id = str(uuid.uuid4())
 
     first_id = await knowledge_store.save_observation(
         dataset_id=dataset_id,
@@ -56,5 +39,3 @@ async def test_knowledge_store_saves_and_retrieves():
     assert len(results) > 0
     assert any("skewed" in r["content"].lower() for r in results)
     assert second_id != first_id
-
-    db_session.close()
