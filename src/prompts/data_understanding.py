@@ -83,6 +83,13 @@ distributions, relationships, and time series as part of your analysis, not
 just printed summary statistics; shapes that look identical in mean/median/
 std can look completely different in a plot.
 
+Every figure you save is kept permanently, not just shown to you once - so
+whenever you save one, also describe it with image_captions. Write what it
+actually shows (which entity, which columns, what pattern or anomaly it's
+evidence for), not a generic label like "chart" - this caption is the only
+thing a future run has to judge whether that image is worth retrieving
+again, since the image itself won't be resent to you indefinitely.
+
 Every execute_python_code call runs in a completely fresh, isolated 
 environment with no memory of any previous call. Nothing persists between 
 calls - no variables, no imports, no loaded data. Each piece of code you 

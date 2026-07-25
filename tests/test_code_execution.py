@@ -66,6 +66,35 @@ def test_saved_plot_is_returned_as_image_and_persisted(db_session, dataset_id):
     assert saved is not None
     assert os.path.exists(saved.file_path)
     assert saved.file_path.endswith(image["filename"])
+    # no image_captions passed - falls back to a preview of the code itself
+    assert saved.caption.startswith("import matplotlib")
+
+
+def test_saved_plot_uses_provided_caption_instead_of_code_preview(db_session, dataset_id):
+    temp_files = []
+    tool = make_execute_python_code_tool(temp_files, dataset_id, ImageStore(db_session))
+
+    code = (
+        "import matplotlib\n"
+        "matplotlib.use('Agg')\n"
+        "import matplotlib.pyplot as plt\n"
+        "plt.figure(figsize=(4, 3))\n"
+        "plt.plot([1, 2, 3], [1, 4, 9])\n"
+        "plt.savefig('/app/output/bearing_diff.png')\n"
+        "print('plot saved')"
+    )
+    caption = "T01 generator bearing A vs B temperature differential over time - static offset, no trend."
+    response = tool.func(code=code, image_captions={"bearing_diff.png": caption})
+
+    assert len(response["images"]) == 1
+
+    from src.memory.manager import AnalysisImage
+    saved = db_session.query(AnalysisImage).filter_by(dataset_id=dataset_id).first()
+    assert saved.caption == caption
+    # the file on disk gets its own unique name, independent of what the
+    # sandbox script called it - captions are matched by the original name
+    # before that rename, not by the final stored filename
+    assert saved.file_path.endswith(response["images"][0]["filename"])
 
 
 def test_long_running_code_is_terminated_by_timeout(db_session, dataset_id):

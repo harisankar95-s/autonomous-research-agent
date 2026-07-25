@@ -7,7 +7,7 @@ import os
 
 import requests
 
-from src.memory.manager import ImageStore
+from src.memory.manager import ImageStore, _as_dict
 from src.tools.base import Tool
 from src.utils.logger import get_logger
 
@@ -19,7 +19,8 @@ CAPTION_PREVIEW_LENGTH = 200
 
 
 def make_execute_python_code_tool(temp_files: list, dataset_id: str, image_store: ImageStore) -> Tool:
-    def execute_python_code(code: str, data_path: str = "") -> str | dict:
+    def execute_python_code(code: str, data_path: str = "", image_captions: dict | None = None) -> str | dict:
+        image_captions = _as_dict(image_captions)
         if data_path and not os.path.exists(data_path):
             error_msg = (
                 f"Error: data_path '{data_path}' does not exist on the host "
@@ -94,9 +95,11 @@ def make_execute_python_code_tool(temp_files: list, dataset_id: str, image_store
                 except Exception:
                     pass
 
-        caption = code[:CAPTION_PREVIEW_LENGTH]
+        fallback_caption = code[:CAPTION_PREVIEW_LENGTH]
         images = []
         for img_path in sorted(glob.glob(os.path.join(output_dir, "*.png")))[:MAX_IMAGES_RETURNED]:
+            filename_on_disk = os.path.basename(img_path)
+            caption = image_captions.get(filename_on_disk) or fallback_caption
             with open(img_path, "rb") as img_f:
                 image_b64 = base64.b64encode(img_f.read()).decode("ascii")
             record = image_store.save_image(dataset_id, image_b64, caption=caption)
@@ -128,13 +131,18 @@ def make_execute_python_code_tool(temp_files: list, dataset_id: str, image_store
             "- any PNGs saved there are returned to you as images you can "
             "actually view, so use this for real visual inspection rather than "
             "only printed summary statistics. Keep figures small (e.g. "
-            "figsize=(6,4), dpi=80) and save at most a few per call. Code that "
-            "runs longer than 60 seconds will be terminated - keep computations "
-            "bounded."
+            "figsize=(6,4), dpi=80) and save at most a few per call. Whenever "
+            "you save a figure, also pass image_captions describing it - this "
+            "caption is what every future run will see when deciding whether "
+            "this image is worth looking at again, so make it specific (what "
+            "it shows, which entity/column, what it's evidence for), not a "
+            "generic label. Code that runs longer than 60 seconds will be "
+            "terminated - keep computations bounded."
         ),
         parameters={
             "code": "the Python code to execute, as a string",
-            "data_path": "optional - the exact file path returned by fetch_data, if your code needs to read fetched data"
+            "data_path": "optional - the exact file path returned by fetch_data, if your code needs to read fetched data",
+            "image_captions": "optional - a mapping from each exact filename you saved (e.g. 'bearing_temp.png') to a one to two sentence description of what it shows and why you made it"
         },
         func=execute_python_code
     )

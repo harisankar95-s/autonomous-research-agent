@@ -37,6 +37,27 @@ def _as_list(value: list | str) -> list:
         return []
     return []
 
+
+def _as_dict(value: dict | str | None) -> dict:
+    """Same normalization as _as_list, for arguments that should be a
+    mapping (e.g. filename -> caption) rather than an array."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            pass
+        try:
+            parsed = ast.literal_eval(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (ValueError, SyntaxError):
+            pass
+        logger.warning(f"Could not parse stringified dict value: {value[:200]}")
+        return {}
+    return {}
+
 class MemoryManager:
     def __init__(self,llm_client:BaseLLMClient,embedding_client:BaseEmbeddingClient,db_session: DBSession):
         self.llm_client = llm_client
