@@ -2,7 +2,9 @@ from src.llm.client import BaseLLMClient, BaseEmbeddingClient
 from sqlalchemy.orm import Session as DBSession
 from src.memory.models import Session,DatasetFacts,Observation,ModelingBrief,AnalysisImage
 from src.utils.logger import get_logger
+import ast
 import base64
+import json
 import os
 import uuid
 
@@ -10,6 +12,30 @@ logger = get_logger(__name__)
 
 VALID_LABEL_STATUSES = ("present", "absent", "undetermined")
 ANALYSIS_IMAGES_DIR = os.path.join("data", "analysis_images")
+
+
+def _as_list(value: list | str) -> list:
+    """Gemini's tool-calling sometimes returns array arguments as a
+    string instead of a native list - either JSON-encoded, or occasionally
+    formatted like a Python literal (single quotes). Normalize at the
+    persistence boundary so every caller reading these columns back can
+    trust they're real lists."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            pass
+        try:
+            parsed = ast.literal_eval(value)
+            return parsed if isinstance(parsed, list) else []
+        except (ValueError, SyntaxError):
+            pass
+        logger.warning(f"Could not parse stringified list value: {value[:200]}")
+        return []
+    return []
 
 class MemoryManager:
     def __init__(self,llm_client:BaseLLMClient,embedding_client:BaseEmbeddingClient,db_session: DBSession):
@@ -81,6 +107,7 @@ class FactStore:
         candidate_targets: list,
         schema_notes: str | None = None
     ) -> None:
+        candidate_targets = _as_list(candidate_targets)
         existing = self.get_facts(dataset_id)
 
         if existing:
@@ -178,6 +205,8 @@ class ModelingBriefStore:
         validation_strategy: str,
         confidence: float
     ) -> ModelingBrief:
+        feature_set = _as_list(feature_set)
+        preprocessing_rules = _as_list(preprocessing_rules)
         existing = self.get_brief(dataset_id)
 
         if existing:
