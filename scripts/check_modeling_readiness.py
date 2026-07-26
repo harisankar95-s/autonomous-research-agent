@@ -3,7 +3,7 @@ import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.memory.manager import ModelingBriefStore, compute_missing_fields
+from src.memory.manager import FactStore, ModelingBriefStore, compute_missing_fields
 from src.utils.config import config
 
 
@@ -18,9 +18,15 @@ def main():
     SessionLocal = sessionmaker(bind=engine)
     db_session = SessionLocal()
 
+    facts = FactStore(db_session).get_facts(dataset_id)
+    columns = facts.columns if facts else None
+
     brief_store = ModelingBriefStore(db_session)
     brief = brief_store.get_brief(dataset_id)
-    missing = compute_missing_fields(brief)
+    # Row/entity-coverage gaps need a live query_log from an actual run to
+    # check honestly - not available here, so this checks column coverage
+    # and field completeness only.
+    missing = compute_missing_fields(brief, columns=columns)
 
     if not missing:
         print(f"READY: modeling brief for '{dataset_id}' is complete.")
