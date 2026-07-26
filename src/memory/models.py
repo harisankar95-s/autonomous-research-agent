@@ -63,6 +63,17 @@ class Observation(Base):
     evidence: Mapped[list | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
+class UnderstandingRound(Base):
+    __tablename__ = "understanding_rounds"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[str] = mapped_column()
+    round_number: Mapped[int] = mapped_column()
+    new_columns_covered: Mapped[list] = mapped_column(JSON)
+    new_observations_count: Mapped[int] = mapped_column()
+    row_gaps_remaining: Mapped[int] = mapped_column()
+    converged: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
 class AnalysisImage(Base):
     __tablename__ = "analysis_images"
     id: Mapped[int] = mapped_column(primary_key=True)

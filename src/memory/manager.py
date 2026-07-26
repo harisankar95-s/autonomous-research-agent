@@ -1,6 +1,6 @@
 from src.llm.client import BaseLLMClient, BaseEmbeddingClient
 from sqlalchemy.orm import Session as DBSession
-from src.memory.models import Session,DatasetFacts,Observation,ModelingBrief,AnalysisImage
+from src.memory.models import Session,DatasetFacts,Observation,ModelingBrief,AnalysisImage,UnderstandingRound
 from src.utils.logger import get_logger
 import ast
 import base64
@@ -400,6 +400,48 @@ class ModelingBriefStore:
             self.db_session.commit()
             logger.info(f"Modeling brief saved | dataset_id={dataset_id}")
             return new_brief
+
+
+class UnderstandingRoundStore:
+    """Audit trail for multi-round convergence - each row is a plain-code
+    diff of one round's actual effect (columns/observations/gaps), not the
+    model's own self-report of whether it found anything new."""
+    def __init__(self, db_session: DBSession):
+        self.db_session = db_session
+
+    def record_round(
+        self,
+        dataset_id: str,
+        round_number: int,
+        new_columns_covered: list,
+        new_observations_count: int,
+        row_gaps_remaining: int,
+        converged: bool
+    ) -> UnderstandingRound:
+        row = UnderstandingRound(
+            dataset_id=dataset_id,
+            round_number=round_number,
+            new_columns_covered=new_columns_covered,
+            new_observations_count=new_observations_count,
+            row_gaps_remaining=row_gaps_remaining,
+            converged=converged
+        )
+        self.db_session.add(row)
+        self.db_session.commit()
+        logger.info(
+            f"Round recorded | dataset_id={dataset_id} | round={round_number} | "
+            f"new_columns={len(new_columns_covered)} | new_observations={new_observations_count} | "
+            f"row_gaps_remaining={row_gaps_remaining} | converged={converged}"
+        )
+        return row
+
+    def get_rounds(self, dataset_id: str) -> list[UnderstandingRound]:
+        return (
+            self.db_session.query(UnderstandingRound)
+            .filter_by(dataset_id=dataset_id)
+            .order_by(UnderstandingRound.round_number)
+            .all()
+        )
 
 
 def compute_row_coverage_gaps(query_log: list[str] | None, entity_columns: list | None) -> list[str]:
