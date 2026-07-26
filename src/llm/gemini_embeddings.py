@@ -26,16 +26,43 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
                     }
                 }
         logger.info(f"Generating embedding | model={self.model}")
-        # NOTE: unlike GeminiClient, this has no retry logic for transient
-        # failures (429/503). Deferred deliberately when this client was
-        # first built. CI hit a real 503 on 2026-07-18, confirming this is
-        # a real gap, not just theoretical — worth adding exponential
-        # backoff (same pattern as GeminiClient._send_with_retry) before
-        # this client sees production traffic.
-        response = await self.client.post(url, json=body)
+        response = await self._send_with_retry(url, body)
         data     =  self._parse_response(response)
         return data
-    
+
+    async def _send_with_retry(self, url: str, body: dict) -> httpx.Response:
+        # Same retry pattern as GeminiClient._send_with_retry - this client
+        # previously had none, which surfaced as a real (not just
+        # theoretical) KeyError on a 429 response body during live testing.
+        max_retries = 3
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                response = await self.client.post(url, json=body)
+
+                if response.status_code in (429, 500, 503):
+                    wait = (2 ** attempt) + random.uniform(0, 1)
+                    logger.warning(f"Status {response.status_code} | attempt {attempt + 1}/{max_retries} | waiting {wait:.1f}s")
+                    await asyncio.sleep(wait)
+                    last_error = response.status_code
+                    continue
+
+                return response
+
+            except httpx.TransportError as e:
+                wait = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(
+                    f"Network error ({type(e).__name__}) | attempt {attempt + 1}/{max_retries} | "
+                    f"waiting {wait:.1f}s"
+                )
+                await asyncio.sleep(wait)
+                last_error = f"{type(e).__name__}: {e}"
+                continue
+
+        else:
+            raise Exception(f"Failed after {max_retries} attempts | last_error={last_error}")
+
     def _parse_response(self, response: httpx.Response) -> list[float]:
         data = response.json()
         return data["embedding"]["values"]

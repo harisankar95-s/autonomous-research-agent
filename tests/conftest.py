@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.memory.manager import ANALYSIS_IMAGES_DIR
-from src.memory.models import AnalysisImage, DatasetFacts, ModelingBrief, Observation
+from src.memory.models import AnalysisImage, DatasetFacts, ModelingBrief, Observation, UnderstandingRound
 from src.utils.config import config
 
 
@@ -31,12 +31,17 @@ def dataset_id(db_session):
     generated_id = f"test-{uuid.uuid4()}"
     yield generated_id
 
-    db_session.query(Observation).filter_by(dataset_id=generated_id).delete()
-    db_session.query(ModelingBrief).filter_by(dataset_id=generated_id).delete()
-    db_session.query(DatasetFacts).filter_by(dataset_id=generated_id).delete()
-    db_session.query(AnalysisImage).filter_by(dataset_id=generated_id).delete()
-    db_session.commit()
+    # Round-based tests derive a second id (f"{id}__blind_check") for the
+    # blind validation round - clean up both under this one fixture rather
+    # than making every round-based test repeat its own teardown.
+    for scoped_id in (generated_id, f"{generated_id}__blind_check"):
+        db_session.query(Observation).filter_by(dataset_id=scoped_id).delete()
+        db_session.query(ModelingBrief).filter_by(dataset_id=scoped_id).delete()
+        db_session.query(DatasetFacts).filter_by(dataset_id=scoped_id).delete()
+        db_session.query(AnalysisImage).filter_by(dataset_id=scoped_id).delete()
+        db_session.query(UnderstandingRound).filter_by(dataset_id=scoped_id).delete()
+        db_session.commit()
 
-    image_dir = os.path.join(ANALYSIS_IMAGES_DIR, generated_id)
-    if os.path.exists(image_dir):
-        shutil.rmtree(image_dir)
+        image_dir = os.path.join(ANALYSIS_IMAGES_DIR, scoped_id)
+        if os.path.exists(image_dir):
+            shutil.rmtree(image_dir)

@@ -25,6 +25,9 @@ class DatasetFacts(Base):
     inferred_task_type: Mapped[str] = mapped_column()
     candidate_targets: Mapped[list] = mapped_column(JSON)
     schema_notes: Mapped[str | None] = mapped_column(default=None)
+    columns: Mapped[list | None] = mapped_column(JSON, default=None)
+    row_count: Mapped[int | None] = mapped_column(default=None)
+    entity_columns: Mapped[list | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 class ModelingBrief(Base):
@@ -38,6 +41,8 @@ class ModelingBrief(Base):
     preprocessing_rules: Mapped[list] = mapped_column(JSON)
     validation_strategy: Mapped[str] = mapped_column()
     confidence: Mapped[float] = mapped_column()
+    entity_heterogeneity_notes: Mapped[str | None] = mapped_column(default=None)
+    validation_anchor: Mapped[dict | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),
@@ -53,6 +58,20 @@ class Observation(Base):
     embedding_model: Mapped[str] = mapped_column()
     confidence_score: Mapped[float] = mapped_column()
     supersedes_id: Mapped[int | None] = mapped_column(default=None)
+    entities: Mapped[list | None] = mapped_column(JSON, default=None)
+    analysis_type: Mapped[str | None] = mapped_column(default=None)
+    evidence: Mapped[list | None] = mapped_column(JSON, default=None)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+class UnderstandingRound(Base):
+    __tablename__ = "understanding_rounds"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[str] = mapped_column()
+    round_number: Mapped[int] = mapped_column()
+    new_columns_covered: Mapped[list] = mapped_column(JSON)
+    new_observations_count: Mapped[int] = mapped_column()
+    row_gaps_remaining: Mapped[int] = mapped_column()
+    converged: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 class AnalysisImage(Base):
