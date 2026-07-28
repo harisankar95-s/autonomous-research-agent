@@ -9,10 +9,17 @@ logger = get_logger(__name__)
 
 
 class ReactAgent:
-    def __init__(self,llm_client:BaseLLMClient,tool_registry:ToolRegistry,system_prompt: str = ""):
+    def __init__(
+        self,
+        llm_client:BaseLLMClient,
+        tool_registry:ToolRegistry,
+        system_prompt: str = "",
+        completion_tool_name: str | None = None
+    ):
         self.llm_client = llm_client
         self.tool_registry = tool_registry
         self.system_prompt = system_prompt
+        self.completion_tool_name = completion_tool_name
         self.max_iterations = 100
         self.conversation_history = []
         self._image_turns = []  # [(history_index, [filenames])] not yet pruned
@@ -49,11 +56,16 @@ class ReactAgent:
         
         self.conversation_history.append({"role": "user", "parts": [{"text": query}]})
 
-        # The modeling-brief completion gate only applies to agents that
-        # actually register that tool - a generic ReactAgent (e.g. a plain
-        # search agent) has no way to satisfy it and would be nudged forever.
-        requires_complete_brief = "finalize_modeling_brief" in self.tool_registry.tools
-        brief_complete = not requires_complete_brief
+        # The completion gate only applies to agents that both opted in
+        # (completion_tool_name set) and actually registered that tool - an
+        # agent that set the name but forgot to register it, or a generic
+        # ReactAgent with no completion tool at all, would otherwise be
+        # nudged forever against something unsatisfiable.
+        requires_completion = (
+            self.completion_tool_name is not None
+            and self.completion_tool_name in self.tool_registry.tools
+        )
+        completion_satisfied = not requires_completion
         nudge_count = 0
         max_nudges = 3
 
@@ -107,8 +119,8 @@ class ReactAgent:
 
                 logger.info(f"Tool result received | tool={response.tool_name} | images={len(images)}")
 
-                if response.tool_name == "finalize_modeling_brief" and tool is not None:
-                    brief_complete = isinstance(tool_result, dict) and bool(tool_result.get("complete"))
+                if response.tool_name == self.completion_tool_name and tool is not None:
+                    completion_satisfied = isinstance(tool_result, dict) and bool(tool_result.get("complete"))
 
                 self.conversation_history.append({
                     "role": "model",
@@ -126,10 +138,10 @@ class ReactAgent:
                     self._prune_old_images()
 
             elif response.finish_reason == "STOP":
-                if not brief_complete and nudge_count < max_nudges:
+                if not completion_satisfied and nudge_count < max_nudges:
                     nudge_count += 1
                     logger.info(
-                        f"Agent tried to stop without a complete modeling brief | "
+                        f"Agent tried to stop before completing {self.completion_tool_name} | "
                         f"nudging ({nudge_count}/{max_nudges})"
                     )
                     self.conversation_history.append({
@@ -139,10 +151,10 @@ class ReactAgent:
                     self.conversation_history.append({
                         "role": "user",
                         "parts": [{"text": (
-                            "You have not finalized a complete modeling brief yet. "
-                            "Before concluding, call finalize_modeling_brief with all "
-                            "required fields - if you already tried and it told you "
-                            "what was missing, address that and call it again."
+                            f"You have not finished yet. Before concluding, call "
+                            f"{self.completion_tool_name} with all required fields - "
+                            f"if you already tried and it told you what was missing, "
+                            f"address that and call it again."
                         )}]
                     })
                     continue

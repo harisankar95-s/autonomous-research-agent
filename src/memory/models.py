@@ -74,6 +74,23 @@ class UnderstandingRound(Base):
     converged: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
+class ModelResult(Base):
+    __tablename__ = "model_results"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(unique=True)
+    algorithm: Mapped[str] = mapped_column()
+    algorithm_rationale: Mapped[str] = mapped_column()
+    applied_feature_engineering: Mapped[list] = mapped_column(JSON)
+    model_path: Mapped[str] = mapped_column()
+    validation_results: Mapped[dict] = mapped_column(JSON)
+    confidence: Mapped[float] = mapped_column()
+    limitations_notes: Mapped[str] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
 class AnalysisImage(Base):
     __tablename__ = "analysis_images"
     id: Mapped[int] = mapped_column(primary_key=True)

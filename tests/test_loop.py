@@ -139,7 +139,10 @@ async def test_agent_nudges_before_finishing_without_complete_brief():
     ])
     registry = ToolRegistry()
     registry.register(_brief_tool(complete=True))
-    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_modeling_brief"
+    )
 
     result = await agent.run("do something")
 
@@ -154,7 +157,10 @@ async def test_agent_finishes_immediately_when_brief_already_complete():
     ])
     registry = ToolRegistry()
     registry.register(_brief_tool(complete=True))
-    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_modeling_brief"
+    )
 
     result = await agent.run("do something")
 
@@ -171,7 +177,10 @@ async def test_agent_stops_after_max_nudges_even_if_brief_stays_incomplete():
     ])
     registry = ToolRegistry()
     registry.register(_brief_tool(complete=False))
-    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_modeling_brief"
+    )
 
     result = await agent.run("do something")
 
@@ -197,7 +206,10 @@ async def test_older_images_are_pruned_from_conversation_history():
     registry.register(_image_tool("make_plot_a", "figure_a.png"))
     registry.register(_image_tool("make_plot_b", "figure_b.png"))
     registry.register(_brief_tool(complete=True))
-    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_modeling_brief"
+    )
 
     await agent.run("do something")
 
@@ -207,3 +219,75 @@ async def test_older_images_are_pruned_from_conversation_history():
 
     assert len(inline_data_parts) == 1
     assert "figure_a.png" in placeholder_texts[0]
+
+
+def _completion_tool(name: str, complete: bool):
+    def finalize():
+        if complete:
+            return {"text": f"{name} finalized - all required fields are complete.", "complete": True}
+        return {"text": f"{name} saved, but still missing required fields.", "complete": False}
+
+    return Tool(name=name, description=f"finalizes via {name}", parameters={}, func=finalize)
+
+
+async def test_agent_nudges_before_finishing_without_complete_model_result():
+    client = _ScriptedLLMClient([
+        _stop_response("too early"),
+        _tool_call_response("finalize_model_result"),
+        _stop_response("done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_completion_tool("finalize_model_result", complete=True))
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_model_result"
+    )
+
+    result = await agent.run("do something")
+
+    assert result == "done"
+    assert client.calls == 3
+
+
+async def test_agent_finishes_immediately_when_model_result_already_complete():
+    client = _ScriptedLLMClient([
+        _tool_call_response("finalize_model_result"),
+        _stop_response("done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_completion_tool("finalize_model_result", complete=True))
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_model_result"
+    )
+
+    result = await agent.run("do something")
+
+    assert result == "done"
+    assert client.calls == 2
+
+
+async def test_agent_has_no_completion_gate_by_default():
+    client = _ScriptedLLMClient([_stop_response("done")])
+    registry = ToolRegistry()
+    registry.register(_completion_tool("finalize_modeling_brief", complete=False))
+    agent = ReactAgent(llm_client=client, tool_registry=registry, system_prompt="test")
+
+    result = await agent.run("do something")
+
+    assert result == "done"
+    assert client.calls == 1
+
+
+async def test_agent_completion_gate_inactive_if_tool_not_registered():
+    client = _ScriptedLLMClient([_stop_response("done")])
+    registry = ToolRegistry()
+    agent = ReactAgent(
+        llm_client=client, tool_registry=registry, system_prompt="test",
+        completion_tool_name="finalize_model_result"
+    )
+
+    result = await agent.run("do something")
+
+    assert result == "done"
+    assert client.calls == 1

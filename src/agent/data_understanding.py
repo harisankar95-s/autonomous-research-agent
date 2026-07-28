@@ -177,7 +177,8 @@ async def create_data_understanding_agent(
     agent = ReactAgent(
         llm_client=llm_client,
         tool_registry=registry,
-        system_prompt=system_prompt
+        system_prompt=system_prompt,
+        completion_tool_name="finalize_modeling_brief"
     )
     # Exposed so a multi-round orchestrator can re-check row/entity coverage
     # against this round's own query activity after the run completes -

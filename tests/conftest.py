@@ -6,8 +6,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.memory.manager import ANALYSIS_IMAGES_DIR
-from src.memory.models import AnalysisImage, DatasetFacts, ModelingBrief, Observation, UnderstandingRound
+from src.memory.manager import ANALYSIS_IMAGES_DIR, MODEL_ARTIFACTS_DIR
+from src.memory.models import AnalysisImage, DatasetFacts, ModelingBrief, ModelResult, Observation, UnderstandingRound
 from src.utils.config import config
 
 
@@ -40,8 +40,13 @@ def dataset_id(db_session):
         db_session.query(DatasetFacts).filter_by(dataset_id=scoped_id).delete()
         db_session.query(AnalysisImage).filter_by(dataset_id=scoped_id).delete()
         db_session.query(UnderstandingRound).filter_by(dataset_id=scoped_id).delete()
+        db_session.query(ModelResult).filter_by(dataset_id=scoped_id).delete()
         db_session.commit()
 
         image_dir = os.path.join(ANALYSIS_IMAGES_DIR, scoped_id)
         if os.path.exists(image_dir):
             shutil.rmtree(image_dir)
+
+        artifact_dir = os.path.join(MODEL_ARTIFACTS_DIR, scoped_id)
+        if os.path.exists(artifact_dir):
+            shutil.rmtree(artifact_dir)
