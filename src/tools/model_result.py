@@ -67,14 +67,19 @@ def make_finalize_model_result_tool(
             "validation_results must include a non-empty anchor_validation "
             "entry. validation_results must also state whether temporal and "
             "cross-entity validation were performed - if either was "
-            "skipped, say why rather than omitting it."
+            "skipped, say why rather than omitting it. Every validation leg "
+            "that was performed (plus anchor_validation, when required) must "
+            "include a 'metrics' object of real numbers - a prose 'detail' "
+            "explaining what happened is not a substitute for the actual "
+            "numbers behind it; this tool checks that the numbers themselves "
+            "are present, not just described."
         ),
         parameters={
             "algorithm": "the short name of the algorithm actually trained (e.g. 'IsolationForest', 'LogisticRegression')",
             "algorithm_rationale": "why this algorithm fits this data and the brief - what drove this choice over alternatives",
             "applied_feature_engineering": "a non-empty list of objects, each with 'column' (the brief's column name), 'status' (one of 'used_directly', 'transformed', 'dropped'), 'output_features' (the actual derived feature name(s) produced, empty list if dropped), and 'detail' (what was actually done, or why dropped) - must cover every column the brief tagged role='feature'",
             "model_path": "the exact path returned when execute_python_code persisted your trained model artifact",
-            "validation_results": "an object recording what you actually checked and found. 'anchor_validation' is required if the brief has a validation_anchor. 'temporal_holdout' and 'cross_entity_generalization' must each state at least {'performed': true/false, ...} - if performed is false, include a 'detail' explaining why it wasn't applicable or possible. Where performed, include 'result' and 'detail' describing what was found",
+            "validation_results": "an object recording what you actually checked and found. 'anchor_validation' is required if the brief has a validation_anchor. 'temporal_holdout' and 'cross_entity_generalization' must each state at least {'performed': true/false, ...} - if performed is false, include a 'detail' explaining why it wasn't applicable or possible. Where performed (and for anchor_validation, always), include 'result', 'detail', and a 'metrics' object of real numbers - e.g. {'anchor_score': 0.54, 'baseline_score': 0.41} or {'train_row_count': 526080, 'test_row_count': 263040, 'pre_period_rate_pct': 0.0, 'post_period_rate_pct': 7.2} - whatever numeric evidence actually backs up the result for that check. Numbers must live in 'metrics' as real numeric values, not only described in the 'detail' sentence",
             "confidence": "your overall confidence in this trained model and its validation, from 0 to 1",
             "limitations_notes": "an honest account of what this model could not validate, where you're least confident, and why - state explicitly if something could not be checked rather than omitting it"
         },

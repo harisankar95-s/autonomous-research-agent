@@ -33,11 +33,20 @@ def _save_brief(db_session, dataset_id, has_anchor=True, feature_set=None):
 
 def _full_validation_results(with_anchor=True):
     results = {
-        "temporal_holdout": {"performed": True, "result": "holds up", "detail": "checked on a later time slice"},
-        "cross_entity_generalization": {"performed": True, "result": "generalizes", "detail": "checked on a held-out entity"},
+        "temporal_holdout": {
+            "performed": True, "result": "holds up", "detail": "checked on a later time slice",
+            "metrics": {"train_row_count": 800, "test_row_count": 200, "pre_period_rate_pct": 0.0, "post_period_rate_pct": 7.2},
+        },
+        "cross_entity_generalization": {
+            "performed": True, "result": "generalizes", "detail": "checked on a held-out entity",
+            "metrics": {"held_out_flagged_pct": 7.8},
+        },
     }
     if with_anchor:
-        results["anchor_validation"] = {"result": "flagged as expected"}
+        results["anchor_validation"] = {
+            "result": "flagged as expected",
+            "metrics": {"anchor_score": 0.54, "baseline_score": 0.41},
+        }
     return results
 
 
@@ -265,6 +274,79 @@ def test_compute_missing_model_result_fields_requires_temporal_and_cross_entity_
     missing = compute_missing_model_result_fields(result, brief)
     assert not any("temporal_holdout" in m for m in missing)
     assert not any("cross_entity_generalization" in m for m in missing)
+
+
+def test_compute_missing_model_result_fields_requires_metrics_for_anchor_validation(db_session, dataset_id, tmp_path):
+    brief = _save_brief(db_session, dataset_id, has_anchor=True)
+    model_path = tmp_path / "model.pkl"
+    model_path.write_bytes(b"fake")
+    result_store = ModelResultStore(db_session)
+
+    validation_results = _full_validation_results(with_anchor=True)
+    validation_results["anchor_validation"] = {"result": "flagged as expected"}  # no metrics
+    result = result_store.save_model_result(
+        dataset_id=dataset_id, algorithm="IsolationForest", algorithm_rationale="scales well",
+        applied_feature_engineering=_full_feature_engineering(), model_path=str(model_path),
+        validation_results=validation_results, confidence=0.7, limitations_notes="none"
+    )
+    missing = compute_missing_model_result_fields(result, brief)
+    assert any("anchor_validation.metrics" in m for m in missing)
+
+    validation_results["anchor_validation"]["metrics"] = {"anchor_score": 0.54, "baseline_score": 0.41}
+    result = result_store.save_model_result(
+        dataset_id=dataset_id, algorithm="IsolationForest", algorithm_rationale="scales well",
+        applied_feature_engineering=_full_feature_engineering(), model_path=str(model_path),
+        validation_results=validation_results, confidence=0.7, limitations_notes="none"
+    )
+    missing = compute_missing_model_result_fields(result, brief)
+    assert not any("anchor_validation.metrics" in m for m in missing)
+
+
+def test_compute_missing_model_result_fields_requires_metrics_when_leg_performed(db_session, dataset_id, tmp_path):
+    brief = _save_brief(db_session, dataset_id, has_anchor=False)
+    model_path = tmp_path / "model.pkl"
+    model_path.write_bytes(b"fake")
+    result_store = ModelResultStore(db_session)
+
+    result = result_store.save_model_result(
+        dataset_id=dataset_id, algorithm="IsolationForest", algorithm_rationale="scales well",
+        applied_feature_engineering=_full_feature_engineering(), model_path=str(model_path),
+        validation_results={
+            "temporal_holdout": {"performed": True, "detail": "checked a later slice", "result": "holds up"},
+            "cross_entity_generalization": {"performed": False, "detail": "only one entity present"},
+        },
+        confidence=0.7, limitations_notes="none"
+    )
+    missing = compute_missing_model_result_fields(result, brief)
+    assert any("temporal_holdout.metrics" in m for m in missing)
+    # a deliberately skipped leg doesn't need metrics, only a reason
+    assert not any("cross_entity_generalization.metrics" in m for m in missing)
+
+
+def test_compute_missing_model_result_fields_rejects_non_numeric_metrics(db_session, dataset_id, tmp_path):
+    brief = _save_brief(db_session, dataset_id, has_anchor=False)
+    model_path = tmp_path / "model.pkl"
+    model_path.write_bytes(b"fake")
+    result_store = ModelResultStore(db_session)
+
+    result = result_store.save_model_result(
+        dataset_id=dataset_id, algorithm="IsolationForest", algorithm_rationale="scales well",
+        applied_feature_engineering=_full_feature_engineering(), model_path=str(model_path),
+        validation_results={
+            "temporal_holdout": {
+                "performed": True, "detail": "checked a later slice", "result": "holds up",
+                "metrics": {"note": "rose sharply"},  # string value, not a number
+            },
+            "cross_entity_generalization": {
+                "performed": True, "detail": "checked a held-out entity", "result": "generalizes",
+                "metrics": {"flagged": True},  # bool - must not be accepted as numeric
+            },
+        },
+        confidence=0.7, limitations_notes="none"
+    )
+    missing = compute_missing_model_result_fields(result, brief)
+    assert any("temporal_holdout.metrics" in m for m in missing)
+    assert any("cross_entity_generalization.metrics" in m for m in missing)
 
 
 def test_model_result_store_upserts_instead_of_duplicating(db_session, dataset_id, tmp_path):

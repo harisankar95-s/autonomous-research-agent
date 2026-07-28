@@ -687,6 +687,21 @@ class ModelResultStore:
             return new_result
 
 
+def _has_numeric_metrics(leg_result: dict) -> bool:
+    """A validation leg's own prose 'detail' is not enough to make its
+    numbers queryable later - this checks for a non-empty 'metrics' dict
+    where every value is a real number, not text describing one. Excludes
+    bool explicitly since bool is a subclass of int in Python and would
+    otherwise silently pass as a 'metric'."""
+    metrics = leg_result.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        return False
+    return all(
+        isinstance(v, (int, float)) and not isinstance(v, bool)
+        for v in metrics.values()
+    )
+
+
 def compute_missing_model_result_fields(
     result: ModelResult | None,
     brief: ModelingBrief | None
@@ -734,12 +749,19 @@ def compute_missing_model_result_fields(
 
         validation_results = result.validation_results or {}
         if brief.validation_anchor and brief.validation_anchor.get("has_anchor"):
-            if not validation_results.get("anchor_validation"):
+            anchor_result = validation_results.get("anchor_validation")
+            if not anchor_result:
                 missing.append(
                     "validation_results.anchor_validation (required because the "
                     "modeling brief defines a validation_anchor) - check the model "
                     "against the brief's anchor_entity/anchor_condition/expected_label "
                     "and record what happened"
+                )
+            elif not _has_numeric_metrics(anchor_result):
+                missing.append(
+                    "validation_results.anchor_validation.metrics - a non-empty "
+                    "object of real numbers (e.g. the anchor's own score and what "
+                    "it's being compared against), not just a prose description"
                 )
         for leg in ("temporal_holdout", "cross_entity_generalization"):
             leg_result = validation_results.get(leg)
@@ -753,6 +775,12 @@ def compute_missing_model_result_fields(
                 missing.append(
                     f"validation_results.{leg} has performed=false but no 'detail' "
                     f"explaining why"
+                )
+            elif leg_result.get("performed") and not _has_numeric_metrics(leg_result):
+                missing.append(
+                    f"validation_results.{leg}.metrics - a non-empty object of "
+                    f"real numbers backing up what was found, not just a prose "
+                    f"description"
                 )
 
     return missing
