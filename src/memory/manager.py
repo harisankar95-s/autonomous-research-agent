@@ -1,6 +1,6 @@
 from src.llm.client import BaseLLMClient, BaseEmbeddingClient
 from sqlalchemy.orm import Session as DBSession
-from src.memory.models import Session,DatasetFacts,Observation,ModelingBrief,AnalysisImage,UnderstandingRound
+from src.memory.models import Session,DatasetFacts,Observation,ModelingBrief,AnalysisImage,UnderstandingRound,ModelResult
 from src.utils.logger import get_logger
 import ast
 import base64
@@ -13,6 +13,10 @@ logger = get_logger(__name__)
 
 VALID_LABEL_STATUSES = ("present", "absent", "undetermined")
 ANALYSIS_IMAGES_DIR = os.path.join("data", "analysis_images")
+# Absolute, unlike ANALYSIS_IMAGES_DIR - a model artifact's path is used as
+# a Docker volume mount source (to remount a prior artifact into a later
+# execute_python_code call), and Docker rejects a relative host path there.
+MODEL_ARTIFACTS_DIR = os.path.abspath(os.path.join("data", "model_artifacts"))
 DUPLICATE_OBSERVATION_DISTANCE = 0.20
 
 
@@ -610,3 +614,173 @@ class ImageStore:
 
         logger.info(f"Analysis image saved | dataset_id={dataset_id} | file_path={file_path}")
         return record
+
+
+def save_model_artifact(dataset_id: str, artifact_bytes: bytes) -> str:
+    """Persists the single current trained-model artifact for a dataset,
+    overwriting any prior one - cardinality here is one current artifact
+    per dataset, not many like AnalysisImage, so the path is stable (not a
+    uuid) and a later execute_python_code call can remount the exact same
+    path without the agent tracking a changing filename."""
+    dataset_dir = os.path.join(MODEL_ARTIFACTS_DIR, dataset_id)
+    os.makedirs(dataset_dir, exist_ok=True)
+    file_path = os.path.join(dataset_dir, "model.pkl")
+    with open(file_path, "wb") as f:
+        f.write(artifact_bytes)
+    logger.info(f"Model artifact saved | dataset_id={dataset_id} | file_path={file_path}")
+    return file_path
+
+
+class ModelResultStore:
+    def __init__(self, db_session: DBSession):
+        self.db_session = db_session
+
+    def get_model_result(self, dataset_id: str) -> ModelResult | None:
+        result = (
+            self.db_session.query(ModelResult)
+            .filter_by(dataset_id=dataset_id)
+            .first()
+        )
+        logger.info(f"Model result retrieved | dataset_id={dataset_id} | found={result is not None}")
+        return result
+
+    def save_model_result(
+        self,
+        dataset_id: str,
+        algorithm: str,
+        algorithm_rationale: str,
+        applied_feature_engineering: list,
+        model_path: str,
+        validation_results: dict,
+        confidence: float,
+        limitations_notes: str
+    ) -> ModelResult:
+        applied_feature_engineering = _as_list(applied_feature_engineering)
+        validation_results = _as_dict(validation_results) if validation_results else validation_results
+        existing = self.get_model_result(dataset_id)
+
+        if existing:
+            existing.algorithm = algorithm
+            existing.algorithm_rationale = algorithm_rationale
+            existing.applied_feature_engineering = applied_feature_engineering
+            existing.model_path = model_path
+            existing.validation_results = validation_results
+            existing.confidence = confidence
+            existing.limitations_notes = limitations_notes
+            self.db_session.commit()
+            logger.info(f"Model result updated | dataset_id={dataset_id}")
+            return existing
+        else:
+            new_result = ModelResult(
+                dataset_id=dataset_id,
+                algorithm=algorithm,
+                algorithm_rationale=algorithm_rationale,
+                applied_feature_engineering=applied_feature_engineering,
+                model_path=model_path,
+                validation_results=validation_results,
+                confidence=confidence,
+                limitations_notes=limitations_notes
+            )
+            self.db_session.add(new_result)
+            self.db_session.commit()
+            logger.info(f"Model result saved | dataset_id={dataset_id}")
+            return new_result
+
+
+def _has_numeric_metrics(leg_result: dict) -> bool:
+    """A validation leg's own prose 'detail' is not enough to make its
+    numbers queryable later - this checks for a non-empty 'metrics' dict
+    where every value is a real number, not text describing one. Excludes
+    bool explicitly since bool is a subclass of int in Python and would
+    otherwise silently pass as a 'metric'."""
+    metrics = leg_result.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        return False
+    return all(
+        isinstance(v, (int, float)) and not isinstance(v, bool)
+        for v in metrics.values()
+    )
+
+
+def compute_missing_model_result_fields(
+    result: ModelResult | None,
+    brief: ModelingBrief | None
+) -> list[str]:
+    """Mirrors compute_missing_fields' plain-code philosophy: every
+    requirement here is checked against real, structural state (the brief's
+    own recorded columns/validation_anchor, the actual filesystem) rather
+    than trusting the agent's self-report."""
+    if result is None:
+        return [
+            "algorithm", "algorithm_rationale", "applied_feature_engineering",
+            "model_path", "validation_results", "confidence", "limitations_notes",
+        ]
+
+    missing = []
+    if not result.algorithm:
+        missing.append("algorithm")
+    if not result.algorithm_rationale:
+        missing.append("algorithm_rationale (why this algorithm was chosen)")
+    if not result.model_path:
+        missing.append("model_path")
+    elif not os.path.exists(result.model_path):
+        missing.append(f"model_path points to '{result.model_path}', which does not exist on disk")
+    if result.confidence is None:
+        missing.append("confidence")
+    if not result.limitations_notes:
+        missing.append("limitations_notes")
+
+    if brief is not None:
+        feature_columns = {
+            f.get("column") for f in (brief.feature_set or [])
+            if isinstance(f, dict) and f.get("role") == "feature"
+        }
+        addressed = {
+            e.get("column") for e in (result.applied_feature_engineering or [])
+            if isinstance(e, dict) and e.get("column") and e.get("status") and e.get("detail")
+        }
+        unaddressed = sorted(feature_columns - addressed)
+        if unaddressed:
+            missing.append(
+                f"applied_feature_engineering does not address {len(unaddressed)} "
+                f"brief feature column(s): {', '.join(unaddressed)} - state whether "
+                f"each was used directly, transformed, or dropped, and why"
+            )
+
+        validation_results = result.validation_results or {}
+        if brief.validation_anchor and brief.validation_anchor.get("has_anchor"):
+            anchor_result = validation_results.get("anchor_validation")
+            if not anchor_result:
+                missing.append(
+                    "validation_results.anchor_validation (required because the "
+                    "modeling brief defines a validation_anchor) - check the model "
+                    "against the brief's anchor_entity/anchor_condition/expected_label "
+                    "and record what happened"
+                )
+            elif not _has_numeric_metrics(anchor_result):
+                missing.append(
+                    "validation_results.anchor_validation.metrics - a non-empty "
+                    "object of real numbers (e.g. the anchor's own score and what "
+                    "it's being compared against), not just a prose description"
+                )
+        for leg in ("temporal_holdout", "cross_entity_generalization"):
+            leg_result = validation_results.get(leg)
+            if not isinstance(leg_result, dict) or "performed" not in leg_result:
+                missing.append(
+                    f"validation_results.{leg} - state whether this was performed "
+                    f"(true/false) and either what you found or why it wasn't "
+                    f"applicable or possible"
+                )
+            elif not leg_result.get("performed") and not leg_result.get("detail"):
+                missing.append(
+                    f"validation_results.{leg} has performed=false but no 'detail' "
+                    f"explaining why"
+                )
+            elif leg_result.get("performed") and not _has_numeric_metrics(leg_result):
+                missing.append(
+                    f"validation_results.{leg}.metrics - a non-empty object of "
+                    f"real numbers backing up what was found, not just a prose "
+                    f"description"
+                )
+
+    return missing
